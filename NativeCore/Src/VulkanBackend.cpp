@@ -1,3 +1,4 @@
+#include "RenderGraph.h"
 #include "VulkanBackend.h"
 #include <iostream>
 
@@ -26,9 +27,31 @@ void VulkanBackend::Shutdown()
 
 void VulkanBackend::SetupRenderGraph()
 {
-    // Evaluate resource access tags, merge barriers, build render passes.
-    // Memory allocations for persistent and temporary resources.
-    std::cout << "[VulkanBackend] Render Graph setup complete. Barriers merged.\n";
+    // Instantiate RenderGraph (usually a member variable, instantiated here for demonstration)
+    RenderGraph graph;
+
+    // 1. Declare resources
+    graph.AddResource("GBufferColor", true, AccessTag::None);
+    graph.AddResource("GBufferDepth", true, AccessTag::None);
+    graph.AddResource("ShadowMap", false, AccessTag::None);
+
+    // 2. Declare passes and their resource accesses
+    graph.AddPass("ShadowPass");
+    graph.DeclarePassAccess("ShadowPass", "ShadowMap", AccessTag::DepthStencilWrite);
+
+    graph.AddPass("OpaquePass");
+    graph.DeclarePassAccess("OpaquePass", "GBufferColor", AccessTag::ColorAttachmentWrite);
+    graph.DeclarePassAccess("OpaquePass", "GBufferDepth", AccessTag::DepthStencilWrite);
+    graph.DeclarePassAccess("OpaquePass", "ShadowMap", AccessTag::ShaderRead); // Needs transition!
+
+    graph.AddPass("LightingPass");
+    graph.DeclarePassAccess("LightingPass", "GBufferColor", AccessTag::ShaderRead); // Needs transition!
+    graph.DeclarePassAccess("LightingPass", "GBufferDepth", AccessTag::ShaderRead); // Needs transition!
+
+    // 3. Compile the graph to merge barriers
+    graph.CompileGraph();
+
+    std::cout << "[VulkanBackend] Render Graph setup complete. Barriers merged at compile time.\n";
 }
 
 void VulkanBackend::BeginFrame()
