@@ -1,3 +1,4 @@
 {
-    "cmake.sourceDirectory": "D:/ArrFolder/WorkSpaces/UnityWorkSpace/Mini_Endfield/NativeCore"
+    "cmake.sourceDirectory": "D:/ArrFolder/WorkSpaces/UnityWorkSpace/Mini_Endfield/NativeCore",
+    "dotnet.preferCSharpExtension": true
 }

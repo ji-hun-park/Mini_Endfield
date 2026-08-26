@@ -39,29 +39,46 @@ namespace Endfield.ECS.Systems
             VulkanPluginWrapper.BeginFrame();
 
             // Collect all visible entities
-            // For production, we'd extract the sorted keys and matrices here
             int entityCount = m_RenderQuery.CalculateEntityCount();
 
-            // Allocate a temporary buffer for native transfer
-            NativeArray<InstanceData> instanceData = new NativeArray<InstanceData>(entityCount, Allocator.TempJob);
+            if (entityCount == 0)
+            {
+                VulkanPluginWrapper.EndFrame();
+                return;
+            }
 
-            // Schedule job to pack data (Sort + Filter)
+            // Allocate a temporary buffer for native transfer and a counter
+            NativeArray<InstanceData> instanceData = new NativeArray<InstanceData>(entityCount, Allocator.TempJob);
+            NativeArray<int> counter = new NativeArray<int>(1, Allocator.TempJob);
+            counter[0] = 0;
+
+            // Schedule job to pack data (Filter visible + copy)
             var packJob = new PackInstanceDataJob
             {
-                Instances = instanceData
+                Instances = instanceData,
+                Counter = counter,
+                LocalToWorldType = GetComponentTypeHandle<LocalToWorld>(true),
+                RenderMeshType = GetComponentTypeHandle<RenderMeshComponent>(true),
+                VisibilityType = GetComponentTypeHandle<VisibilityComponent>(true)
             };
 
             Dependency = packJob.Schedule(m_RenderQuery, Dependency);
             Dependency.Complete();
 
-            // Submit to Vulkan Plugin
-            unsafe
+            int visibleCount = counter[0];
+
+            // Submit to Vulkan Plugin only if there's anything visible
+            if (visibleCount > 0)
             {
-                IntPtr ptr = (IntPtr)NativeArrayUnsafeUtility.GetUnsafePtr(instanceData);
-                VulkanPluginWrapper.SubmitRenderBatch(ptr, instanceData.Length);
+                unsafe
+                {
+                    IntPtr ptr = (IntPtr)NativeArrayUnsafeUtility.GetUnsafePtr(instanceData);
+                    VulkanPluginWrapper.SubmitRenderBatch(ptr, visibleCount);
+                }
             }
 
             instanceData.Dispose();
+            counter.Dispose();
 
             VulkanPluginWrapper.EndFrame();
         }
@@ -69,13 +86,35 @@ namespace Endfield.ECS.Systems
         [BurstCompile]
         private struct PackInstanceDataJob : IJobChunk
         {
-            // Implementation for packing instance data into the NativeArray
-            // Sorting should ideally happen before or during this phase.
             public NativeArray<InstanceData> Instances;
+            public NativeArray<int> Counter;
+
+            [ReadOnly] public ComponentTypeHandle<LocalToWorld> LocalToWorldType;
+            [ReadOnly] public ComponentTypeHandle<RenderMeshComponent> RenderMeshType;
+            [ReadOnly] public ComponentTypeHandle<VisibilityComponent> VisibilityType;
 
             public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
             {
-                // Iterate through chunks, check VisibilityComponent, and copy matrices & sort keys
+                var matrices = chunk.GetNativeArray(ref LocalToWorldType);
+                var renderMeshes = chunk.GetNativeArray(ref RenderMeshType);
+                var visibilities = chunk.GetNativeArray(ref VisibilityType);
+
+                int count = chunk.Count;
+                int currentIdx = Counter[0];
+
+                for (int i = 0; i < count; i++)
+                {
+                    if (visibilities[i].IsVisible == 1)
+                    {
+                        Instances[currentIdx++] = new InstanceData
+                        {
+                            WorldMatrix = matrices[i].Value,
+                            SortKey = renderMeshes[i].SortKey
+                        };
+                    }
+                }
+
+                Counter[0] = currentIdx;
             }
         }
     }
