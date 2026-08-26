@@ -1,8 +1,10 @@
 using Unity.Burst;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Transforms;
+using Unity.Burst.Intrinsics;
 using System;
 using Endfield.Rendering;
 
@@ -65,7 +67,7 @@ namespace Endfield.ECS.Systems
         }
 
         [BurstCompile]
-        private struct PackInstanceDataJob : IJobEntityChunk
+        private struct PackInstanceDataJob : IJobChunk
         {
             // Implementation for packing instance data into the NativeArray
             // Sorting should ideally happen before or during this phase.
