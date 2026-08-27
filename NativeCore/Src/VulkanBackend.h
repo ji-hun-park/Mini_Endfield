@@ -1,10 +1,7 @@
 #pragma once
 
 #include <vector>
-
-// Forward declarations for Vulkan types, to avoid requiring vulkan.h in header if possible,
-// but for simplicity we can include it if needed. 
-// Assuming a simplified structure for demonstration.
+#include <vulkan/vulkan.h>
 
 class VulkanBackend
 {
@@ -22,15 +19,22 @@ public:
     void EndFrame();
 
 private:
-    // This is where explicit Vulkan handles would reside.
-    // VkInstance instance;
-    // VkDevice device;
-    // VkQueue graphicsQueue;
-    // VkCommandBuffer currentCommandBuffer;
+    // Core Vulkan Handles
+    VkInstance m_Instance = VK_NULL_HANDLE;
+    VkDevice m_Device = VK_NULL_HANDLE;
+    VkPhysicalDevice m_PhysicalDevice = VK_NULL_HANDLE;
+    VkQueue m_GraphicsQueue = VK_NULL_HANDLE;
+    VkCommandPool m_CommandPool = VK_NULL_HANDLE;
+    VkCommandBuffer m_CommandBuffer = VK_NULL_HANDLE;
     
-    // Manage descriptor sets:
-    // Set 0: Per Pass
-    // Set 1: Per Material
-    // Set 2: Per Draw (Dynamic Offset)
+    // Manage descriptor sets tracking (Endfield redundant binding optimization)
+    // 0x7F7F7F7F placeholder for redundant bindings
+    uint32_t m_LastBoundMaterialSet = 0xFFFFFFFF;
+    
+    // For demonstration, a struct mimicking the submitted C# data
+    struct InstanceData {
+        float worldMatrix[16];
+        uint64_t sortKey;
+    };
 };
 
