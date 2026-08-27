@@ -31,6 +31,12 @@ private:
     // 0x7F7F7F7F placeholder for redundant bindings
     uint32_t m_LastBoundMaterialSet = 0xFFFFFFFF;
     
+    // Placeholder Vulkan objects for demonstration of SubmitBatch
+    VkPipelineLayout m_PipelineLayout = VK_NULL_HANDLE;
+    VkDescriptorSet m_DescriptorSet0_Pass = VK_NULL_HANDLE;
+    VkDescriptorSet m_DescriptorSet2_Object = VK_NULL_HANDLE;
+    std::vector<VkDescriptorSet> m_MaterialSets;
+
     // For demonstration, a struct mimicking the submitted C# data
     struct InstanceData {
         float worldMatrix[16];

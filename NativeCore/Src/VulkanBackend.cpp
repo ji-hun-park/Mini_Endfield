@@ -12,31 +12,111 @@ VulkanBackend::~VulkanBackend()
 
 void VulkanBackend::Initialize()
 {
-    // Note: This is a structural skeleton mimicking the native pipeline.
-    // In a real application, you'd populate VkApplicationInfo, VkInstanceCreateInfo, etc.
-    
     // 1. Create Vulkan Instance
-    // vkCreateInstance(&createInfo, nullptr, &m_Instance);
+    VkApplicationInfo appInfo{};
+    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    appInfo.pApplicationName = "Mini Endfield Native Renderer";
+    appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+    appInfo.pEngineName = "Endfield Engine";
+    appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+    appInfo.apiVersion = VK_API_VERSION_1_0;
+
+    VkInstanceCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    createInfo.pApplicationInfo = &appInfo;
+
+    if (vkCreateInstance(&createInfo, nullptr, &m_Instance) != VK_SUCCESS) {
+        std::cerr << "[VulkanBackend] Failed to create Vulkan instance!\n";
+        return;
+    }
 
     // 2. Select Physical Device
-    // vkEnumeratePhysicalDevices(m_Instance, &deviceCount, physicalDevices.data());
+    uint32_t deviceCount = 0;
+    vkEnumeratePhysicalDevices(m_Instance, &deviceCount, nullptr);
+    if (deviceCount == 0) {
+        std::cerr << "[VulkanBackend] Failed to find GPUs with Vulkan support!\n";
+        return;
+    }
+
+    std::vector<VkPhysicalDevice> devices(deviceCount);
+    vkEnumeratePhysicalDevices(m_Instance, &deviceCount, devices.data());
+    m_PhysicalDevice = devices[0]; // Simply pick the first available device
 
     // 3. Create Logical Device & Queues
-    // vkCreateDevice(m_PhysicalDevice, &deviceCreateInfo, nullptr, &m_Device);
-    // vkGetDeviceQueue(m_Device, queueFamilyIndex, 0, &m_GraphicsQueue);
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(m_PhysicalDevice, &queueFamilyCount, nullptr);
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(m_PhysicalDevice, &queueFamilyCount, queueFamilies.data());
+
+    uint32_t graphicsQueueFamilyIndex = 0;
+    for (uint32_t i = 0; i < queueFamilyCount; i++) {
+        if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+            graphicsQueueFamilyIndex = i;
+            break;
+        }
+    }
+
+    float queuePriority = 1.0f;
+    VkDeviceQueueCreateInfo queueCreateInfo{};
+    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queueCreateInfo.queueFamilyIndex = graphicsQueueFamilyIndex;
+    queueCreateInfo.queueCount = 1;
+    queueCreateInfo.pQueuePriorities = &queuePriority;
+
+    VkDeviceCreateInfo deviceCreateInfo{};
+    deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
+    deviceCreateInfo.queueCreateInfoCount = 1;
+
+    if (vkCreateDevice(m_PhysicalDevice, &deviceCreateInfo, nullptr, &m_Device) != VK_SUCCESS) {
+        std::cerr << "[VulkanBackend] Failed to create logical device!\n";
+        return;
+    }
+    vkGetDeviceQueue(m_Device, graphicsQueueFamilyIndex, 0, &m_GraphicsQueue);
 
     // 4. Setup Command Pools and Buffers
-    // vkCreateCommandPool(m_Device, &poolInfo, nullptr, &m_CommandPool);
-    // vkAllocateCommandBuffers(m_Device, &allocInfo, &m_CommandBuffer);
+    VkCommandPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    poolInfo.queueFamilyIndex = graphicsQueueFamilyIndex;
 
-    std::cout << "[VulkanBackend] Initialized native Vulkan backend (Skeleton).\n";
+    if (vkCreateCommandPool(m_Device, &poolInfo, nullptr, &m_CommandPool) != VK_SUCCESS) {
+        std::cerr << "[VulkanBackend] Failed to create command pool!\n";
+        return;
+    }
+
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = m_CommandPool;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandBufferCount = 1;
+
+    if (vkAllocateCommandBuffers(m_Device, &allocInfo, &m_CommandBuffer) != VK_SUCCESS) {
+        std::cerr << "[VulkanBackend] Failed to allocate command buffers!\n";
+        return;
+    }
+
+    std::cout << "[VulkanBackend] Successfully Initialized Native Vulkan Backend.\n";
 }
 
 void VulkanBackend::Shutdown()
 {
-    // Clean up Vulkan resources
-    // if (m_Device) vkDestroyDevice(m_Device, nullptr);
-    // if (m_Instance) vkDestroyInstance(m_Instance, nullptr);
+    // Wait for the logical device to finish operations before cleaning up
+    if (m_Device) {
+        vkDeviceWaitIdle(m_Device);
+        
+        if (m_CommandPool) {
+            vkDestroyCommandPool(m_Device, m_CommandPool, nullptr);
+            m_CommandPool = VK_NULL_HANDLE;
+        }
+        vkDestroyDevice(m_Device, nullptr);
+        m_Device = VK_NULL_HANDLE;
+    }
+
+    if (m_Instance) {
+        vkDestroyInstance(m_Instance, nullptr);
+        m_Instance = VK_NULL_HANDLE;
+    }
 
     std::cout << "[VulkanBackend] Shut down native Vulkan backend.\n";
 }
@@ -74,9 +154,18 @@ void VulkanBackend::SetupRenderGraph()
 
 void VulkanBackend::BeginFrame()
 {
-    // VkCommandBufferBeginInfo beginInfo{};
-    // beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    // vkBeginCommandBuffer(m_CommandBuffer, &beginInfo);
+    if (m_CommandBuffer == VK_NULL_HANDLE) return;
+
+    // Reset command buffer before starting new frame commands
+    vkResetCommandBuffer(m_CommandBuffer, 0);
+
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    if (vkBeginCommandBuffer(m_CommandBuffer, &beginInfo) != VK_SUCCESS) {
+        std::cerr << "[VulkanBackend] Failed to begin recording command buffer!\n";
+    }
     
     // Reset our redundant binding tracker for the new frame
     m_LastBoundMaterialSet = 0xFFFFFFFF;
@@ -84,7 +173,7 @@ void VulkanBackend::BeginFrame()
 
 void VulkanBackend::SubmitBatch(const void* batchData, int instanceCount)
 {
-    if (instanceCount == 0 || !batchData) return;
+    if (instanceCount == 0 || !batchData || m_CommandBuffer == VK_NULL_HANDLE) return;
 
     const InstanceData* instances = static_cast<const InstanceData*>(batchData);
 
@@ -93,8 +182,11 @@ void VulkanBackend::SubmitBatch(const void* batchData, int instanceCount)
     // Set 1: Per Material (Textures, Constants)
     // Set 2: Per Draw (Object matrices via Dynamic Offset)
 
-    // E.g., Bind Set 0 (Per Pass) once
-    // vkCmdBindDescriptorSets(m_CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &set0, 0, nullptr);
+    // E.g., Bind Set 0 (Per Pass) once per batch/pass
+    if (m_PipelineLayout != VK_NULL_HANDLE && m_DescriptorSet0_Pass != VK_NULL_HANDLE) {
+        vkCmdBindDescriptorSets(m_CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 
+                                m_PipelineLayout, 0, 1, &m_DescriptorSet0_Pass, 0, nullptr);
+    }
 
     for (int i = 0; i < instanceCount; ++i)
     {
@@ -109,30 +201,52 @@ void VulkanBackend::SubmitBatch(const void* batchData, int instanceCount)
         if (materialID != m_LastBoundMaterialSet && materialID != 0x7F7F7F7F)
         {
             // Bind Set 1 (Material)
-            // VkDescriptorSet materialSet = GetMaterialSet(materialID);
-            // vkCmdBindDescriptorSets(m_CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 1, 1, &materialSet, 0, nullptr);
+            if (m_PipelineLayout != VK_NULL_HANDLE && materialID < m_MaterialSets.size()) {
+                VkDescriptorSet materialSet = m_MaterialSets[materialID];
+                vkCmdBindDescriptorSets(m_CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 
+                                        m_PipelineLayout, 1, 1, &materialSet, 0, nullptr);
+            }
             m_LastBoundMaterialSet = materialID;
         }
 
         // Set 2 (Object Data): Dynamic Offset based on instance index
         uint32_t dynamicOffset = i * sizeof(InstanceData);
-        // vkCmdBindDescriptorSets(m_CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 2, 1, &set2, 1, &dynamicOffset);
+        
+        if (m_PipelineLayout != VK_NULL_HANDLE && m_DescriptorSet2_Object != VK_NULL_HANDLE) {
+            vkCmdBindDescriptorSets(m_CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 
+                                    m_PipelineLayout, 2, 1, &m_DescriptorSet2_Object, 1, &dynamicOffset);
+        }
 
         // Execute Draw Call
-        // vkCmdDrawIndexed(m_CommandBuffer, indexCount, 1, 0, 0, 0);
+        // Assuming indexCount is managed externally or stored in the material/mesh data.
+        // For demonstration, we use a mock indexCount of 36 (e.g., a cube).
+        uint32_t indexCount = 36;
+        vkCmdDrawIndexed(m_CommandBuffer, indexCount, 1, 0, 0, 0);
     }
 }
 
 void VulkanBackend::EndFrame()
 {
-    // vkEndCommandBuffer(m_CommandBuffer);
+    if (m_CommandBuffer == VK_NULL_HANDLE) return;
+
+    if (vkEndCommandBuffer(m_CommandBuffer) != VK_SUCCESS) {
+        std::cerr << "[VulkanBackend] Failed to record command buffer!\n";
+        return;
+    }
     
-    // VkSubmitInfo submitInfo{};
-    // submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    // submitInfo.commandBufferCount = 1;
-    // submitInfo.pCommandBuffers = &m_CommandBuffer;
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &m_CommandBuffer;
     
-    // vkQueueSubmit(m_GraphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+    if (vkQueueSubmit(m_GraphicsQueue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
+        std::cerr << "[VulkanBackend] Failed to submit draw command buffer!\n";
+    }
     
-    // vkQueuePresentKHR(presentQueue, &presentInfo);
+    // Simplistic CPU wait to guarantee queue completion for this skeleton
+    // In production, multi-buffering with VkFence would be used instead of stalling
+    vkQueueWaitIdle(m_GraphicsQueue);
+    
+    // Note: vkQueuePresentKHR would go here if rendering directly to a screen swapchain.
+    // Usually with Unity plugins, we render to a shared offscreen texture instead.
 }
