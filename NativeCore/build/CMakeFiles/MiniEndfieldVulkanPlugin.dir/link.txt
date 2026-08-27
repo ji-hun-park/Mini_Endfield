@@ -1,3 +1,0 @@
-"D:\Program Files\Microsoft\VisualStudio\Packages\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -E rm -f CMakeFiles\MiniEndfieldVulkanPlugin.dir/objects.a
-D:\msys64\mingw64\bin\ar.exe qc CMakeFiles\MiniEndfieldVulkanPlugin.dir/objects.a @CMakeFiles\MiniEndfieldVulkanPlugin.dir\objects1.rsp
-D:\msys64\mingw64\bin\g++.exe -g -shared -o D:\ArrFolder\WorkSpaces\UnityWorkSpace\Mini_Endfield\Assets\Plugins\libMiniEndfieldVulkanPlugin.dll -Wl,--out-implib,libMiniEndfieldVulkanPlugin.dll.a -Wl,--major-image-version,0,--minor-image-version,0 -Wl,--whole-archive CMakeFiles\MiniEndfieldVulkanPlugin.dir/objects.a -Wl,--no-whole-archive @CMakeFiles\MiniEndfieldVulkanPlugin.dir\linkLibs.rsp

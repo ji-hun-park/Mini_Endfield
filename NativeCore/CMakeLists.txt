@@ -37,7 +37,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE EXPORT_PLUGIN)
 
 # Output to Unity project (Plugins folder)
 set_target_properties(${PROJECT_NAME} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../Assets/Plugins"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../Assets/Plugins"
+    PREFIX ""
+    OUTPUT_NAME "EndfieldVulkanPlugin"
 )
 

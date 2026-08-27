@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="D:\ArrFolder\WorkSpaces\UnityWorkSpace\Mini_Endfield\NativeCore\build\CMakeFiles\87936f400b503ccd253e3fe4787e2089\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{F0F932A1-C6AF-3C19-BA62-A121B6AFE7BF}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
