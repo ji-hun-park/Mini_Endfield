@@ -23,6 +23,8 @@ extern "C" {
 
     // Shader injection
     PLUGIN_API void SetShaders(const char* vertCode, int vertSize, const char* fragCode, int fragSize);
+    PLUGIN_API void LoadMesh(uint32_t meshId, const float* vertices, int vertexCount, const uint32_t* indices, int indexCount);
+    PLUGIN_API void SetViewProjectionMatrix(const float* vpMatrix);
 
     // Submit a chunk of sorted entities from Unity DOTS
     // In actual implementation, this takes a pointer to a NativeArray of structs

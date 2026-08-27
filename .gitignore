@@ -115,3 +115,6 @@ InitTestScene*.unity*
 
 # Vulkan SDK
 /VulkanSDK
+
+# FBX
+/[Aa]ssets/FBX

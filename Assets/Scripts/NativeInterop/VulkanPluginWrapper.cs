@@ -8,7 +8,7 @@ namespace Endfield.Rendering
 {
     public static class VulkanPluginWrapper
     {
-        private const string pluginName = "MiniEndfieldVulkanPlugin";
+        private const string pluginName = "MiniEndfieldVulkanPlugin_v9";
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate void DebugLogCallback([MarshalAs(UnmanagedType.LPStr)] string message);
@@ -28,8 +28,6 @@ namespace Endfield.Rendering
         public static void InitializeWithDebug()
         {
             SetDebugLogCallback(_debugCallback);
-            // UnityPluginLoad is called automatically by Unity Native Plugin Architecture
-            // We just set the debug callback here.
         }
 
         [DllImport(pluginName)]
@@ -39,6 +37,19 @@ namespace Endfield.Rendering
         public static extern void SetShaders(byte[] vertCode, int vertSize, byte[] fragCode, int fragSize);
 
         [DllImport(pluginName)]
+        public static extern void SetResolution(int width, int height);
+
+        [DllImport(pluginName)]
+        public static extern void LoadMesh(uint meshId, IntPtr vertices, int vertexCount, IntPtr indices, int indexCount);
+
+        [DllImport(pluginName)]
         public static extern void SubmitRenderBatch(IntPtr batchData, int instanceCount);
     }
 }
+
+
+
+
+
+
+

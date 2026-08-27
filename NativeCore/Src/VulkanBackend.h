@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <unordered_map>
 
 #if defined(_WIN32)
 #define VK_USE_PLATFORM_WIN32_KHR
@@ -18,6 +19,9 @@ public:
     // Type for C# Debug.Log callback
     typedef void(*DebugLogFunc)(const char*);
     static void SetDebugCallback(DebugLogFunc callback);
+    void SetResolution(int width, int height);
+    int m_Width = 1920;
+    int m_Height = 1080;
 
     // Unity Plugin Lifecycle
     void OnPluginLoad(IUnityInterfaces* unityInterfaces);
@@ -55,9 +59,32 @@ private:
     // Render Pass & Pipeline
     VkRenderPass m_RenderPass = VK_NULL_HANDLE;
     VkPipeline m_GraphicsPipeline = VK_NULL_HANDLE;
+    VkPipelineLayout m_PipelineLayout = VK_NULL_HANDLE;
     void CreateRenderPass(VkFormat format);
     void CreateGraphicsPipeline();
     VkShaderModule CreateShaderModule(const std::vector<char>& code);
+
+    // Mesh Data
+    struct Vertex {
+        float pos[3];
+        float uv[2];
+    };
+
+    struct MeshBuffers {
+        VkBuffer vertexBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory vertexMemory = VK_NULL_HANDLE;
+        VkBuffer indexBuffer = VK_NULL_HANDLE;
+        VkDeviceMemory indexMemory = VK_NULL_HANDLE;
+        uint32_t indexCount = 0;
+    };
+
+    std::unordered_map<uint32_t, MeshBuffers> m_Meshes;
+
+public:
+    void LoadMesh(uint32_t meshId, const float* vertices, int vertexCount, const uint32_t* indices, int indexCount);
+private:
+    uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
+
 
     // We don't need our own CommandPool/Buffer or Sync objects anymore!
     // Unity handles the Swapchain and CommandBuffers.
@@ -67,16 +94,11 @@ private:
     // 0x7F7F7F7F placeholder for redundant bindings
     uint32_t m_LastBoundMaterialSet = 0xFFFFFFFF;
     
-    // Placeholder Vulkan objects for demonstration of SubmitBatch
-    VkPipelineLayout m_PipelineLayout = VK_NULL_HANDLE;
-    VkDescriptorSet m_DescriptorSet0_Pass = VK_NULL_HANDLE;
-    VkDescriptorSet m_DescriptorSet2_Object = VK_NULL_HANDLE;
-    std::vector<VkDescriptorSet> m_MaterialSets;
-
     // For demonstration, a struct mimicking the submitted C# data
     struct InstanceData {
-        float worldMatrix[16];
+        float mvpMatrix[16];
         uint64_t sortKey;
     };
-};
 
+    std::vector<InstanceData> m_SubmittedInstances;
+};

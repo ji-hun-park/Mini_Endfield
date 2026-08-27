@@ -5,6 +5,7 @@ using Unity.Entities;
 using Unity.Jobs;
 using Unity.Transforms;
 using Unity.Burst.Intrinsics;
+using Unity.Mathematics;
 using System;
 using System.IO;
 using Endfield.Rendering;
@@ -18,7 +19,6 @@ namespace Endfield.ECS.Systems
     public partial class RenderSubmissionSystem : SystemBase
     {
         private EntityQuery m_RenderQuery;
-        private CommandBuffer m_CommandBuffer;
 
         protected override void OnCreate()
         {
@@ -29,33 +29,32 @@ namespace Endfield.ECS.Systems
             );
 
             VulkanPluginWrapper.InitializeWithDebug();
-            
-            // Load and send shaders
+
             string vertPath = Path.Combine(Application.dataPath, "../vert.spv");
             string fragPath = Path.Combine(Application.dataPath, "../frag.spv");
-            if (File.Exists(vertPath) && File.Exists(fragPath)) {
+            if (File.Exists(vertPath) && File.Exists(fragPath))
+            {
                 byte[] vertCode = File.ReadAllBytes(vertPath);
                 byte[] fragCode = File.ReadAllBytes(fragPath);
                 VulkanPluginWrapper.SetShaders(vertCode, vertCode.Length, fragCode, fragCode.Length);
             }
-
-            m_CommandBuffer = new CommandBuffer();
-            m_CommandBuffer.name = "Native Vulkan Render Pass";
         }
 
         protected override void OnDestroy()
         {
-            if (m_CommandBuffer != null)
-            {
-                m_CommandBuffer.Release();
-            }
         }
 
         protected override void OnUpdate()
         {
-            // Collect all visible entities
             int entityCount = m_RenderQuery.CalculateEntityCount();
             if (entityCount == 0) return;
+
+            Camera cam = Camera.main;
+            if (cam == null) return;
+
+            VulkanPluginWrapper.SetResolution(cam.pixelWidth, cam.pixelHeight);
+
+            Matrix4x4 vp = GL.GetGPUProjectionMatrix(cam.projectionMatrix, false) * cam.worldToCameraMatrix;
 
             NativeArray<InstanceData> instanceData = new NativeArray<InstanceData>(entityCount, Allocator.TempJob);
             NativeArray<int> counter = new NativeArray<int>(1, Allocator.TempJob);
@@ -65,6 +64,7 @@ namespace Endfield.ECS.Systems
             {
                 Instances = instanceData,
                 Counter = counter,
+                VPMatrix = vp,
                 LocalToWorldType = GetComponentTypeHandle<LocalToWorld>(true),
                 RenderMeshType = GetComponentTypeHandle<RenderMeshComponent>(true),
                 VisibilityType = GetComponentTypeHandle<VisibilityComponent>(true)
@@ -81,10 +81,6 @@ namespace Endfield.ECS.Systems
                 {
                     IntPtr ptr = (IntPtr)NativeArrayUnsafeUtility.GetUnsafePtr(instanceData);
                     VulkanPluginWrapper.SubmitRenderBatch(ptr, visibleCount);
-                    
-                    m_CommandBuffer.Clear();
-                    m_CommandBuffer.IssuePluginEvent(VulkanPluginWrapper.GetRenderEventFunc(), 1);
-                    Graphics.ExecuteCommandBuffer(m_CommandBuffer);
                 }
             }
 
@@ -97,6 +93,7 @@ namespace Endfield.ECS.Systems
         {
             public NativeArray<InstanceData> Instances;
             public NativeArray<int> Counter;
+            public float4x4 VPMatrix;
 
             [ReadOnly] public ComponentTypeHandle<LocalToWorld> LocalToWorldType;
             [ReadOnly] public ComponentTypeHandle<RenderMeshComponent> RenderMeshType;
@@ -117,7 +114,7 @@ namespace Endfield.ECS.Systems
                     {
                         Instances[currentIdx++] = new InstanceData
                         {
-                            WorldMatrix = matrices[i].Value,
+                            MvpMatrix = math.mul(VPMatrix, matrices[i].Value),
                             SortKey = renderMeshes[i].SortKey
                         };
                     }
@@ -130,7 +127,9 @@ namespace Endfield.ECS.Systems
 
     public struct InstanceData
     {
-        public Unity.Mathematics.float4x4 WorldMatrix;
+        public Unity.Mathematics.float4x4 MvpMatrix;
         public ulong SortKey;
     }
 }
+
+

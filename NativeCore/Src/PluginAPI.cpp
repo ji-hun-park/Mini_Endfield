@@ -32,6 +32,13 @@ extern "C" {
         IUnityGraphics* graphics = unityInterfaces->Get<IUnityGraphics>();
         if (graphics) {
             graphics->RegisterDeviceEventCallback(OnGraphicsDeviceEvent);
+    IUnityGraphicsVulkan* vulkan = unityInterfaces->Get<IUnityGraphicsVulkan>();
+    if (vulkan) {
+        UnityVulkanPluginEventConfig config{};
+        config.renderPassPrecondition = kUnityVulkanRenderPass_EnsureInside;
+        config.graphicsQueueAccess = kUnityVulkanGraphicsQueueAccess_DontCare;
+        vulkan->ConfigureEvent(1, &config);
+    }
             OnGraphicsDeviceEvent(kUnityGfxDeviceEventInitialize);
         }
     }
@@ -69,7 +76,15 @@ extern "C" {
         }
     }
 
-    PLUGIN_API void SubmitRenderBatch(const void* batchData, int instanceCount)
+    PLUGIN_API void LoadMesh(uint32_t meshId, const float* vertices, int vertexCount, const uint32_t* indices, int indexCount)
+    {
+        if (g_VulkanBackend)
+        {
+            g_VulkanBackend->LoadMesh(meshId, vertices, vertexCount, indices, indexCount);
+        }
+    }
+
+        PLUGIN_API void SubmitRenderBatch(const void* batchData, int instanceCount)
     {
         if (g_VulkanBackend)
         {
@@ -77,5 +92,12 @@ extern "C" {
         }
     }
 
+    PLUGIN_API void SetResolution(int width, int height)
+    {
+        if (g_VulkanBackend)
+        {
+            g_VulkanBackend->SetResolution(width, height);
+        }
+    }
 }
 
