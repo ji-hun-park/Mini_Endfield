@@ -51,6 +51,8 @@ void VulkanBackend::Initialize(void* windowHandle)
     CreateLogicalDevice();
     CreateCommandObjects();
     CreateSwapchain();
+    CreateRenderPass();
+    CreateFramebuffers();
 
     LogToUnity("[VulkanBackend] Successfully Initialized Native Vulkan Backend.");
 }
@@ -449,12 +451,101 @@ void VulkanBackend::CreateSwapchain()
     LogToUnity("[VulkanBackend] Swapchain and Image Views successfully created. (Count: " + std::to_string(imageCount) + ")");
 }
 
+void VulkanBackend::CreateRenderPass()
+{
+    if (m_Device == VK_NULL_HANDLE) return;
+
+    // 1. Color Attachment (Swapchain)
+    VkAttachmentDescription colorAttachment{};
+    colorAttachment.format = m_SwapchainImageFormat;
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; // Ready for display
+
+    VkAttachmentReference colorAttachmentRef{};
+    colorAttachmentRef.attachment = 0;
+    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    // 2. Subpass
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorAttachmentRef;
+
+    // 3. Subpass Dependency (Synchronization)
+    VkSubpassDependency dependency{};
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependency.dstSubpass = 0;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.srcAccessMask = 0;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+    // 4. Create Render Pass
+    VkRenderPassCreateInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassInfo.attachmentCount = 1;
+    renderPassInfo.pAttachments = &colorAttachment;
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+    renderPassInfo.dependencyCount = 1;
+    renderPassInfo.pDependencies = &dependency;
+
+    if (vkCreateRenderPass(m_Device, &renderPassInfo, nullptr, &m_RenderPass) != VK_SUCCESS) {
+        LogToUnity("[VulkanBackend ERROR] Failed to create render pass!");
+    } else {
+        LogToUnity("[VulkanBackend] Render Pass successfully created.");
+    }
+}
+
+void VulkanBackend::CreateFramebuffers()
+{
+    if (m_Device == VK_NULL_HANDLE || m_RenderPass == VK_NULL_HANDLE) return;
+
+    m_SwapchainFramebuffers.resize(m_SwapchainImageViews.size());
+
+    for (size_t i = 0; i < m_SwapchainImageViews.size(); i++) {
+        VkImageView attachments[] = {
+            m_SwapchainImageViews[i] // Connect Swapchain image view to the color attachment
+        };
+
+        VkFramebufferCreateInfo framebufferInfo{};
+        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferInfo.renderPass = m_RenderPass;
+        framebufferInfo.attachmentCount = 1;
+        framebufferInfo.pAttachments = attachments;
+        framebufferInfo.width = m_SwapchainExtent.width;
+        framebufferInfo.height = m_SwapchainExtent.height;
+        framebufferInfo.layers = 1;
+
+        if (vkCreateFramebuffer(m_Device, &framebufferInfo, nullptr, &m_SwapchainFramebuffers[i]) != VK_SUCCESS) {
+            LogToUnity("[VulkanBackend ERROR] Failed to create framebuffer " + std::to_string(i) + "!");
+        }
+    }
+
+    LogToUnity("[VulkanBackend] Framebuffers successfully created.");
+}
+
 void VulkanBackend::Shutdown()
 {
     // Wait for the logical device to finish operations before cleaning up
     if (m_Device) {
         vkDeviceWaitIdle(m_Device);
         
+        for (auto framebuffer : m_SwapchainFramebuffers) {
+            vkDestroyFramebuffer(m_Device, framebuffer, nullptr);
+        }
+        m_SwapchainFramebuffers.clear();
+
+        if (m_RenderPass) {
+            vkDestroyRenderPass(m_Device, m_RenderPass, nullptr);
+            m_RenderPass = VK_NULL_HANDLE;
+        }
+
         for (auto imageView : m_SwapchainImageViews) {
             vkDestroyImageView(m_Device, imageView, nullptr);
         }

@@ -49,6 +49,12 @@ private:
     VkExtent2D m_SwapchainExtent;
     std::vector<VkImage> m_SwapchainImages;
     std::vector<VkImageView> m_SwapchainImageViews;
+    std::vector<VkFramebuffer> m_SwapchainFramebuffers;
+
+    // Render Pass
+    VkRenderPass m_RenderPass = VK_NULL_HANDLE;
+    void CreateRenderPass();
+    void CreateFramebuffers();
 
     // Queues
     VkQueue m_GraphicsQueue = VK_NULL_HANDLE;
