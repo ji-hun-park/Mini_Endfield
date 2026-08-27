@@ -4,6 +4,9 @@ project(MiniEndfieldVulkanPlugin)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Use local VulkanSDK
+set(ENV{VULKAN_SDK} "${CMAKE_CURRENT_SOURCE_DIR}/../VulkanSDK/1.4.357.0")
+
 # Find Vulkan
 find_package(Vulkan REQUIRED)
 
