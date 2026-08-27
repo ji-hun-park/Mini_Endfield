@@ -6,6 +6,8 @@
 #define VK_USE_PLATFORM_WIN32_KHR
 #endif
 #include <vulkan/vulkan.h>
+#include "IUnityGraphics.h"
+#include "IUnityGraphicsVulkan.h"
 
 class VulkanBackend
 {
@@ -17,64 +19,49 @@ public:
     typedef void(*DebugLogFunc)(const char*);
     static void SetDebugCallback(DebugLogFunc callback);
 
-    void Initialize(void* windowHandle = nullptr);
-    void Shutdown();
+    // Unity Plugin Lifecycle
+    void OnPluginLoad(IUnityInterfaces* unityInterfaces);
+    void OnPluginUnload();
+    static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType eventType);
+    
+    // Unity Render Event
+    void OnRenderEvent(int eventID);
+
+    // Shader Injection
+    void SetShaders(const char* vertCode, int vertSize, const char* fragCode, int fragSize);
 
     void SetupRenderGraph();
-    
-    void BeginFrame();
     void SubmitBatch(const void* batchData, int instanceCount);
-    void EndFrame();
 
 private:
-    // Initialization Helpers
-    void CreateInstance();
-    void SetupDebugMessenger();
-    void CreateSurface(void* windowHandle);
-    void SelectPhysicalDevice();
-    void CreateLogicalDevice();
-    void CreateCommandObjects();
-    void CreateSwapchain();
+    void InitializeVulkan(IUnityInterfaces* unityInterfaces);
+    
+    // Unity interfaces
+    IUnityInterfaces* m_UnityInterfaces = nullptr;
+    IUnityGraphics* m_UnityGraphics = nullptr;
+    IUnityGraphicsVulkan* m_UnityVulkan = nullptr;
 
-    // Core Vulkan Handles
+    // Core Vulkan Handles (Provided by Unity)
     VkInstance m_Instance = VK_NULL_HANDLE;
-    VkDebugUtilsMessengerEXT m_DebugMessenger = VK_NULL_HANDLE;
-    VkSurfaceKHR m_Surface = VK_NULL_HANDLE;
     VkDevice m_Device = VK_NULL_HANDLE;
     VkPhysicalDevice m_PhysicalDevice = VK_NULL_HANDLE;
-    
-    // Swapchain
-    VkSwapchainKHR m_Swapchain = VK_NULL_HANDLE;
-    VkFormat m_SwapchainImageFormat;
-    VkExtent2D m_SwapchainExtent;
-    std::vector<VkImage> m_SwapchainImages;
-    std::vector<VkImageView> m_SwapchainImageViews;
-    std::vector<VkFramebuffer> m_SwapchainFramebuffers;
+    VkQueue m_GraphicsQueue = VK_NULL_HANDLE;
+    uint32_t m_GraphicsQueueFamilyIndex = 0;
+
+    // Shader Storage
+    std::vector<char> m_VertShaderCode;
+    std::vector<char> m_FragShaderCode;
 
     // Render Pass & Pipeline
     VkRenderPass m_RenderPass = VK_NULL_HANDLE;
     VkPipeline m_GraphicsPipeline = VK_NULL_HANDLE;
-    void CreateRenderPass();
-    void CreateFramebuffers();
+    void CreateRenderPass(VkFormat format);
     void CreateGraphicsPipeline();
     VkShaderModule CreateShaderModule(const std::vector<char>& code);
 
-    // Sync Objects
-    VkSemaphore m_ImageAvailableSemaphore = VK_NULL_HANDLE;
-    VkSemaphore m_RenderFinishedSemaphore = VK_NULL_HANDLE;
-    VkFence m_InFlightFence = VK_NULL_HANDLE;
-    void CreateSyncObjects();
+    // We don't need our own CommandPool/Buffer or Sync objects anymore!
+    // Unity handles the Swapchain and CommandBuffers.
 
-    uint32_t m_CurrentImageIndex = 0;
-
-    // Queues
-    VkQueue m_GraphicsQueue = VK_NULL_HANDLE;
-    VkQueue m_PresentQueue = VK_NULL_HANDLE;
-    uint32_t m_GraphicsQueueFamilyIndex = 0;
-    uint32_t m_PresentQueueFamilyIndex = 0;
-
-    VkCommandPool m_CommandPool = VK_NULL_HANDLE;
-    VkCommandBuffer m_CommandBuffer = VK_NULL_HANDLE;
     
     // Manage descriptor sets tracking (Endfield redundant binding optimization)
     // 0x7F7F7F7F placeholder for redundant bindings

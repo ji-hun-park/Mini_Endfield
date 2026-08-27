@@ -10,38 +10,62 @@ extern "C" {
         VulkanBackend::SetDebugCallback(callback);
     }
 
-    PLUGIN_API void InitializeVulkanBackend(void* windowHandle)
+    static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType eventType)
+    {
+        if (g_VulkanBackend)
+        {
+            if (eventType == kUnityGfxDeviceEventInitialize) {
+                g_VulkanBackend->OnPluginLoad(nullptr); // Handled differently now
+            }
+        }
+    }
+
+    // Called when the plugin is loaded by Unity
+    PLUGIN_API void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnityInterfaces* unityInterfaces)
     {
         if (!g_VulkanBackend)
         {
             g_VulkanBackend = new VulkanBackend();
-            g_VulkanBackend->Initialize(windowHandle);
+        }
+        g_VulkanBackend->OnPluginLoad(unityInterfaces);
+        
+        IUnityGraphics* graphics = unityInterfaces->Get<IUnityGraphics>();
+        if (graphics) {
+            graphics->RegisterDeviceEventCallback(OnGraphicsDeviceEvent);
+            OnGraphicsDeviceEvent(kUnityGfxDeviceEventInitialize);
         }
     }
 
-    PLUGIN_API void ShutdownVulkanBackend()
+    // Called when the plugin is unloaded by Unity
+    PLUGIN_API void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload()
     {
         if (g_VulkanBackend)
         {
-            g_VulkanBackend->Shutdown();
+            g_VulkanBackend->OnPluginUnload();
             delete g_VulkanBackend;
             g_VulkanBackend = nullptr;
         }
     }
 
-    PLUGIN_API void SetupRenderGraph()
+    // Called by Unity's CommandBuffer.IssuePluginEvent
+    static void UNITY_INTERFACE_API OnRenderEvent(int eventID)
     {
         if (g_VulkanBackend)
         {
-            g_VulkanBackend->SetupRenderGraph();
+            g_VulkanBackend->OnRenderEvent(eventID);
         }
     }
 
-    PLUGIN_API void BeginFrame()
+    PLUGIN_API UnityRenderingEvent UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API GetRenderEventFunc()
+    {
+        return OnRenderEvent;
+    }
+
+    PLUGIN_API void SetShaders(const char* vertCode, int vertSize, const char* fragCode, int fragSize)
     {
         if (g_VulkanBackend)
         {
-            g_VulkanBackend->BeginFrame();
+            g_VulkanBackend->SetShaders(vertCode, vertSize, fragCode, fragSize);
         }
     }
 
@@ -50,14 +74,6 @@ extern "C" {
         if (g_VulkanBackend)
         {
             g_VulkanBackend->SubmitBatch(batchData, instanceCount);
-        }
-    }
-
-    PLUGIN_API void EndFrame()
-    {
-        if (g_VulkanBackend)
-        {
-            g_VulkanBackend->EndFrame();
         }
     }
 

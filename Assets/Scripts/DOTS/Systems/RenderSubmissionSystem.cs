@@ -6,7 +6,10 @@ using Unity.Jobs;
 using Unity.Transforms;
 using Unity.Burst.Intrinsics;
 using System;
+using System.IO;
 using Endfield.Rendering;
+using UnityEngine.Rendering;
+using UnityEngine;
 
 namespace Endfield.ECS.Systems
 {
@@ -15,6 +18,7 @@ namespace Endfield.ECS.Systems
     public partial class RenderSubmissionSystem : SystemBase
     {
         private EntityQuery m_RenderQuery;
+        private CommandBuffer m_CommandBuffer;
 
         protected override void OnCreate()
         {
@@ -24,35 +28,39 @@ namespace Endfield.ECS.Systems
                 ComponentType.ReadOnly<VisibilityComponent>()
             );
 
-            // Initialize Vulkan when system is created
-            VulkanPluginWrapper.InitializeVulkanBackend();
-            VulkanPluginWrapper.SetupRenderGraph();
+            VulkanPluginWrapper.InitializeWithDebug();
+            
+            // Load and send shaders
+            string vertPath = Path.Combine(Application.dataPath, "../vert.spv");
+            string fragPath = Path.Combine(Application.dataPath, "../frag.spv");
+            if (File.Exists(vertPath) && File.Exists(fragPath)) {
+                byte[] vertCode = File.ReadAllBytes(vertPath);
+                byte[] fragCode = File.ReadAllBytes(fragPath);
+                VulkanPluginWrapper.SetShaders(vertCode, vertCode.Length, fragCode, fragCode.Length);
+            }
+
+            m_CommandBuffer = new CommandBuffer();
+            m_CommandBuffer.name = "Native Vulkan Render Pass";
         }
 
         protected override void OnDestroy()
         {
-            VulkanPluginWrapper.ShutdownVulkanBackend();
+            if (m_CommandBuffer != null)
+            {
+                m_CommandBuffer.Release();
+            }
         }
 
         protected override void OnUpdate()
         {
-            VulkanPluginWrapper.BeginFrame();
-
             // Collect all visible entities
             int entityCount = m_RenderQuery.CalculateEntityCount();
+            if (entityCount == 0) return;
 
-            if (entityCount == 0)
-            {
-                VulkanPluginWrapper.EndFrame();
-                return;
-            }
-
-            // Allocate a temporary buffer for native transfer and a counter
             NativeArray<InstanceData> instanceData = new NativeArray<InstanceData>(entityCount, Allocator.TempJob);
             NativeArray<int> counter = new NativeArray<int>(1, Allocator.TempJob);
             counter[0] = 0;
 
-            // Schedule job to pack data (Filter visible + copy)
             var packJob = new PackInstanceDataJob
             {
                 Instances = instanceData,
@@ -67,20 +75,21 @@ namespace Endfield.ECS.Systems
 
             int visibleCount = counter[0];
 
-            // Submit to Vulkan Plugin only if there's anything visible
             if (visibleCount > 0)
             {
                 unsafe
                 {
                     IntPtr ptr = (IntPtr)NativeArrayUnsafeUtility.GetUnsafePtr(instanceData);
                     VulkanPluginWrapper.SubmitRenderBatch(ptr, visibleCount);
+                    
+                    m_CommandBuffer.Clear();
+                    m_CommandBuffer.IssuePluginEvent(VulkanPluginWrapper.GetRenderEventFunc(), 1);
+                    Graphics.ExecuteCommandBuffer(m_CommandBuffer);
                 }
             }
 
             instanceData.Dispose();
             counter.Dispose();
-
-            VulkanPluginWrapper.EndFrame();
         }
 
         [BurstCompile]
@@ -119,11 +128,9 @@ namespace Endfield.ECS.Systems
         }
     }
 
-    // Structure that matches the C++ expected input
     public struct InstanceData
     {
         public Unity.Mathematics.float4x4 WorldMatrix;
         public ulong SortKey;
     }
 }
-

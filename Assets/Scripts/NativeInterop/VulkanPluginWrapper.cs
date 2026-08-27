@@ -1,6 +1,8 @@
 using System.Runtime.InteropServices;
 using Unity.Collections;
 using System;
+using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace Endfield.Rendering
 {
@@ -23,33 +25,20 @@ namespace Endfield.Rendering
             UnityEngine.Debug.Log(message);
         }
 
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetActiveWindow();
-
         public static void InitializeWithDebug()
         {
             SetDebugLogCallback(_debugCallback);
-            IntPtr windowHandle = GetActiveWindow();
-            InitializeVulkanBackend(windowHandle);
+            // UnityPluginLoad is called automatically by Unity Native Plugin Architecture
+            // We just set the debug callback here.
         }
 
         [DllImport(pluginName)]
-        public static extern void InitializeVulkanBackend(IntPtr windowHandle);
+        public static extern IntPtr GetRenderEventFunc();
 
         [DllImport(pluginName)]
-        public static extern void ShutdownVulkanBackend();
-
-        [DllImport(pluginName)]
-        public static extern void SetupRenderGraph();
-
-        [DllImport(pluginName)]
-        public static extern void BeginFrame();
+        public static extern void SetShaders(byte[] vertCode, int vertSize, byte[] fragCode, int fragSize);
 
         [DllImport(pluginName)]
         public static extern void SubmitRenderBatch(IntPtr batchData, int instanceCount);
-
-        [DllImport(pluginName)]
-        public static extern void EndFrame();
     }
 }
-

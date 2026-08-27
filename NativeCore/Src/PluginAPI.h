@@ -5,32 +5,30 @@
 #if defined(_MSC_VER)
     #define PLUGIN_API __declspec(dllexport)
 #else
-    #define PLUGIN_API __attribute__((visibility("default")))
+    #define PLUGIN_API
 #endif
+
+#include "IUnityInterface.h"
+#include "IUnityGraphics.h"
+#include "IUnityGraphicsVulkan.h"
 
 extern "C" {
     
-    // Type for C# Debug.Log callback
-    typedef void(*DebugLogCallback)(const char*);
-    PLUGIN_API void SetDebugLogCallback(DebugLogCallback callback);
+    // Unity Plugin Lifecycle
+    PLUGIN_API void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnityInterfaces* unityInterfaces);
+    PLUGIN_API void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload();
 
-    // Initialize Vulkan backend (called by Unity)
-    PLUGIN_API void InitializeVulkanBackend(void* windowHandle);
+    // Render Event callback for CommandBuffer.IssuePluginEvent
+    PLUGIN_API UnityRenderingEvent UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API GetRenderEventFunc();
 
-    // Shutdown Vulkan backend
-    PLUGIN_API void ShutdownVulkanBackend();
-
-    // Setup Render Graph (called at load time or when graph changes)
-    PLUGIN_API void SetupRenderGraph();
-
-    // Called every frame to begin recording commands
-    PLUGIN_API void BeginFrame();
+    // Shader injection
+    PLUGIN_API void SetShaders(const char* vertCode, int vertSize, const char* fragCode, int fragSize);
 
     // Submit a chunk of sorted entities from Unity DOTS
     // In actual implementation, this takes a pointer to a NativeArray of structs
     PLUGIN_API void SubmitRenderBatch(const void* batchData, int instanceCount);
 
-    // End frame, submit command buffer to Vulkan queue, and present
-    PLUGIN_API void EndFrame();
+    typedef void(*DebugLogCallback)(const char*);
+    PLUGIN_API void SetDebugLogCallback(DebugLogCallback callback);
 
 }
