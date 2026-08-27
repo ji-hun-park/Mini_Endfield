@@ -9,6 +9,10 @@ public:
     VulkanBackend();
     ~VulkanBackend();
 
+    // Type for C# Debug.Log callback
+    typedef void(*DebugLogFunc)(const char*);
+    static void SetDebugCallback(DebugLogFunc callback);
+
     void Initialize();
     void Shutdown();
 
@@ -19,8 +23,16 @@ public:
     void EndFrame();
 
 private:
+    // Initialization Helpers
+    void CreateInstance();
+    void SetupDebugMessenger();
+    void SelectPhysicalDevice();
+    void CreateLogicalDevice();
+    void CreateCommandObjects();
+
     // Core Vulkan Handles
     VkInstance m_Instance = VK_NULL_HANDLE;
+    VkDebugUtilsMessengerEXT m_DebugMessenger = VK_NULL_HANDLE;
     VkDevice m_Device = VK_NULL_HANDLE;
     VkPhysicalDevice m_PhysicalDevice = VK_NULL_HANDLE;
     VkQueue m_GraphicsQueue = VK_NULL_HANDLE;

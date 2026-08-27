@@ -4,6 +4,11 @@
 static VulkanBackend* g_VulkanBackend = nullptr;
 
 extern "C" {
+    
+    PLUGIN_API void SetDebugLogCallback(DebugLogCallback callback)
+    {
+        VulkanBackend::SetDebugCallback(callback);
+    }
 
     PLUGIN_API void InitializeVulkanBackend()
     {

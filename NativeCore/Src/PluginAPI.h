@@ -9,6 +9,10 @@
 #endif
 
 extern "C" {
+    
+    // Type for C# Debug.Log callback
+    typedef void(*DebugLogCallback)(const char*);
+    PLUGIN_API void SetDebugLogCallback(DebugLogCallback callback);
 
     // Initialize Vulkan backend (called by Unity)
     PLUGIN_API void InitializeVulkanBackend();
@@ -30,4 +34,3 @@ extern "C" {
     PLUGIN_API void EndFrame();
 
 }
-

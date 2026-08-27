@@ -1,6 +1,36 @@
 #include "VulkanBackend.h"
 #include "RenderGraph.h"
 #include <iostream>
+#include <string>
+#include <vector>
+
+static VulkanBackend::DebugLogFunc g_DebugCallback = nullptr;
+
+void VulkanBackend::SetDebugCallback(DebugLogFunc callback) {
+    g_DebugCallback = callback;
+}
+
+static void LogToUnity(const std::string& message) {
+    if (g_DebugCallback) {
+        g_DebugCallback(message.c_str());
+    } else {
+        std::cout << message << std::endl;
+    }
+}
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+    VkDebugUtilsMessageTypeFlagsEXT messageType,
+    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+    void* pUserData) 
+{
+    std::string prefix = "[Vulkan] ";
+    if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) prefix = "[Vulkan ERROR] ";
+    else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) prefix = "[Vulkan WARNING] ";
+
+    LogToUnity(prefix + pCallbackData->pMessage);
+    return VK_FALSE;
+}
 
 VulkanBackend::VulkanBackend()
 {
@@ -12,7 +42,17 @@ VulkanBackend::~VulkanBackend()
 
 void VulkanBackend::Initialize()
 {
-    // 1. Create Vulkan Instance
+    CreateInstance();
+    SetupDebugMessenger();
+    SelectPhysicalDevice();
+    CreateLogicalDevice();
+    CreateCommandObjects();
+
+    LogToUnity("[VulkanBackend] Successfully Initialized Native Vulkan Backend.");
+}
+
+void VulkanBackend::CreateInstance()
+{
     VkApplicationInfo appInfo{};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     appInfo.pApplicationName = "Mini Endfield Native Renderer";
@@ -25,12 +65,52 @@ void VulkanBackend::Initialize()
     createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     createInfo.pApplicationInfo = &appInfo;
 
-    if (vkCreateInstance(&createInfo, nullptr, &m_Instance) != VK_SUCCESS) {
-        std::cerr << "[VulkanBackend] Failed to create Vulkan instance!\n";
-        return;
-    }
+    // Enable Validation Layers
+    const char* validationLayers[] = { "VK_LAYER_KHRONOS_validation" };
+    createInfo.enabledLayerCount = 1;
+    createInfo.ppEnabledLayerNames = validationLayers;
 
-    // 2. Select Physical Device
+    // Enable Debug Utils Extension
+    const char* extensions[] = { VK_EXT_DEBUG_UTILS_EXTENSION_NAME };
+    createInfo.enabledExtensionCount = 1;
+    createInfo.ppEnabledExtensionNames = extensions;
+
+    VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
+    debugCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    debugCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    debugCreateInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    debugCreateInfo.pfnUserCallback = DebugCallback;
+    
+    createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
+
+    if (vkCreateInstance(&createInfo, nullptr, &m_Instance) != VK_SUCCESS) {
+        LogToUnity("[VulkanBackend] Failed to create Vulkan instance!");
+    }
+}
+
+void VulkanBackend::SetupDebugMessenger()
+{
+    if (m_Instance == VK_NULL_HANDLE) return;
+
+    VkDebugUtilsMessengerCreateInfoEXT createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    createInfo.pfnUserCallback = DebugCallback;
+
+    auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(m_Instance, "vkCreateDebugUtilsMessengerEXT");
+    if (func != nullptr) {
+        func(m_Instance, &createInfo, nullptr, &m_DebugMessenger);
+        LogToUnity("[VulkanBackend] Debug Messenger successfully created.");
+    } else {
+        LogToUnity("[VulkanBackend ERROR] Failed to load vkCreateDebugUtilsMessengerEXT function.");
+    }
+}
+
+void VulkanBackend::SelectPhysicalDevice()
+{
+    if (m_Instance == VK_NULL_HANDLE) return;
+
     uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(m_Instance, &deviceCount, nullptr);
     if (deviceCount == 0) {
@@ -41,8 +121,12 @@ void VulkanBackend::Initialize()
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(m_Instance, &deviceCount, devices.data());
     m_PhysicalDevice = devices[0]; // Simply pick the first available device
+}
 
-    // 3. Create Logical Device & Queues
+void VulkanBackend::CreateLogicalDevice()
+{
+    if (m_PhysicalDevice == VK_NULL_HANDLE) return;
+
     uint32_t queueFamilyCount = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(m_PhysicalDevice, &queueFamilyCount, nullptr);
     std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
@@ -73,8 +157,25 @@ void VulkanBackend::Initialize()
         return;
     }
     vkGetDeviceQueue(m_Device, graphicsQueueFamilyIndex, 0, &m_GraphicsQueue);
+}
 
-    // 4. Setup Command Pools and Buffers
+void VulkanBackend::CreateCommandObjects()
+{
+    if (m_Device == VK_NULL_HANDLE || m_PhysicalDevice == VK_NULL_HANDLE) return;
+
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(m_PhysicalDevice, &queueFamilyCount, nullptr);
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(m_PhysicalDevice, &queueFamilyCount, queueFamilies.data());
+
+    uint32_t graphicsQueueFamilyIndex = 0;
+    for (uint32_t i = 0; i < queueFamilyCount; i++) {
+        if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+            graphicsQueueFamilyIndex = i;
+            break;
+        }
+    }
+
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
@@ -93,10 +194,7 @@ void VulkanBackend::Initialize()
 
     if (vkAllocateCommandBuffers(m_Device, &allocInfo, &m_CommandBuffer) != VK_SUCCESS) {
         std::cerr << "[VulkanBackend] Failed to allocate command buffers!\n";
-        return;
     }
-
-    std::cout << "[VulkanBackend] Successfully Initialized Native Vulkan Backend.\n";
 }
 
 void VulkanBackend::Shutdown()

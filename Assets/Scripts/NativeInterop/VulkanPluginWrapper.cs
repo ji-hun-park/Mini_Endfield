@@ -8,6 +8,27 @@ namespace Endfield.Rendering
     {
         private const string pluginName = "MiniEndfieldVulkanPlugin";
 
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate void DebugLogCallback([MarshalAs(UnmanagedType.LPStr)] string message);
+
+        [DllImport(pluginName)]
+        public static extern void SetDebugLogCallback(DebugLogCallback callback);
+
+        // Keep a reference to prevent garbage collection
+        private static DebugLogCallback _debugCallback = new DebugLogCallback(LogMessageFromVulkan);
+
+        [AOT.MonoPInvokeCallback(typeof(DebugLogCallback))]
+        private static void LogMessageFromVulkan(string message)
+        {
+            UnityEngine.Debug.Log(message);
+        }
+
+        public static void InitializeWithDebug()
+        {
+            SetDebugLogCallback(_debugCallback);
+            InitializeVulkanBackend();
+        }
+
         [DllImport(pluginName)]
         public static extern void InitializeVulkanBackend();
 
