@@ -40,15 +40,34 @@ VulkanBackend::~VulkanBackend()
 {
 }
 
-void VulkanBackend::Initialize()
+void VulkanBackend::Initialize(void* windowHandle)
 {
     CreateInstance();
     SetupDebugMessenger();
+    CreateSurface(windowHandle);
     SelectPhysicalDevice();
     CreateLogicalDevice();
     CreateCommandObjects();
 
     LogToUnity("[VulkanBackend] Successfully Initialized Native Vulkan Backend.");
+}
+
+void VulkanBackend::CreateSurface(void* windowHandle)
+{
+#if defined(_WIN32)
+    if (!windowHandle || m_Instance == VK_NULL_HANDLE) return;
+
+    VkWin32SurfaceCreateInfoKHR createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+    createInfo.hwnd = (HWND)windowHandle;
+    createInfo.hinstance = GetModuleHandle(nullptr);
+
+    if (vkCreateWin32SurfaceKHR(m_Instance, &createInfo, nullptr, &m_Surface) != VK_SUCCESS) {
+        LogToUnity("[VulkanBackend ERROR] Failed to create Win32 Surface!");
+    } else {
+        LogToUnity("[VulkanBackend] Win32 Surface successfully created.");
+    }
+#endif
 }
 
 void VulkanBackend::CreateInstance()
@@ -114,13 +133,93 @@ void VulkanBackend::SelectPhysicalDevice()
     uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(m_Instance, &deviceCount, nullptr);
     if (deviceCount == 0) {
-        std::cerr << "[VulkanBackend] Failed to find GPUs with Vulkan support!\n";
+        LogToUnity("[VulkanBackend ERROR] Failed to find GPUs with Vulkan support!");
         return;
     }
 
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(m_Instance, &deviceCount, devices.data());
-    m_PhysicalDevice = devices[0]; // Simply pick the first available device
+
+    VkPhysicalDevice bestDevice = VK_NULL_HANDLE;
+    int highestScore = -1;
+
+    for (const auto& device : devices) {
+        int score = 0;
+
+        // 1. Device Type Check (Discrete GPU gets massive bonus)
+        VkPhysicalDeviceProperties deviceProperties;
+        vkGetPhysicalDeviceProperties(device, &deviceProperties);
+        if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+            score += 1000;
+        }
+
+        // Check Queue Families
+        uint32_t queueFamilyCount = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+        std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+
+        bool hasGraphicsQueue = false;
+        bool hasPresentQueue = false;
+
+        for (uint32_t i = 0; i < queueFamilyCount; i++) {
+            // 2. Graphics Queue Support
+            if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                hasGraphicsQueue = true;
+            }
+
+            // 3. Present Queue Support
+            if (m_Surface != VK_NULL_HANDLE) {
+                VkBool32 presentSupport = false;
+                vkGetPhysicalDeviceSurfaceSupportKHR(device, i, m_Surface, &presentSupport);
+                if (presentSupport) {
+                    hasPresentQueue = true;
+                }
+            } else {
+                hasPresentQueue = true; // No surface to check against
+            }
+        }
+
+        if (hasGraphicsQueue) score += 500;
+        if (hasPresentQueue) score += 500;
+
+        // 4. Required Extension Support (e.g., Swapchain)
+        uint32_t extensionCount;
+        vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
+        std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+        vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
+
+        bool swapchainSupported = false;
+        for (const auto& extension : availableExtensions) {
+            if (std::string(extension.extensionName) == VK_KHR_SWAPCHAIN_EXTENSION_NAME) {
+                swapchainSupported = true;
+                break;
+            }
+        }
+        
+        if (swapchainSupported) {
+            score += 500;
+        }
+
+        // Output score to log for debugging
+        LogToUnity("[VulkanBackend] GPU Found: " + std::string(deviceProperties.deviceName) + " (Score: " + std::to_string(score) + ")");
+
+        // Evaluate Best GPU
+        if (score > highestScore) {
+            highestScore = score;
+            bestDevice = device;
+        }
+    }
+
+    if (bestDevice != VK_NULL_HANDLE && highestScore > 0) {
+        m_PhysicalDevice = bestDevice;
+        
+        VkPhysicalDeviceProperties bestProps;
+        vkGetPhysicalDeviceProperties(m_PhysicalDevice, &bestProps);
+        LogToUnity("[VulkanBackend] Selected Best GPU: " + std::string(bestProps.deviceName) + " (Score: " + std::to_string(highestScore) + ")");
+    } else {
+        LogToUnity("[VulkanBackend ERROR] Failed to find a suitable GPU!");
+    }
 }
 
 void VulkanBackend::CreateLogicalDevice()
@@ -211,12 +310,25 @@ void VulkanBackend::Shutdown()
         m_Device = VK_NULL_HANDLE;
     }
 
+    if (m_DebugMessenger) {
+        auto func = (PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(m_Instance, "vkDestroyDebugUtilsMessengerEXT");
+        if (func != nullptr) {
+            func(m_Instance, m_DebugMessenger, nullptr);
+        }
+        m_DebugMessenger = VK_NULL_HANDLE;
+    }
+
+    if (m_Surface) {
+        vkDestroySurfaceKHR(m_Instance, m_Surface, nullptr);
+        m_Surface = VK_NULL_HANDLE;
+    }
+
     if (m_Instance) {
         vkDestroyInstance(m_Instance, nullptr);
         m_Instance = VK_NULL_HANDLE;
     }
 
-    std::cout << "[VulkanBackend] Shut down native Vulkan backend.\n";
+    LogToUnity("[VulkanBackend] Shut down native Vulkan backend.");
 }
 
 void VulkanBackend::SetupRenderGraph()

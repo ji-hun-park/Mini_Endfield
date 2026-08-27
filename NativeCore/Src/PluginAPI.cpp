@@ -10,12 +10,12 @@ extern "C" {
         VulkanBackend::SetDebugCallback(callback);
     }
 
-    PLUGIN_API void InitializeVulkanBackend()
+    PLUGIN_API void InitializeVulkanBackend(void* windowHandle)
     {
         if (!g_VulkanBackend)
         {
             g_VulkanBackend = new VulkanBackend();
-            g_VulkanBackend->Initialize();
+            g_VulkanBackend->Initialize(windowHandle);
         }
     }
 

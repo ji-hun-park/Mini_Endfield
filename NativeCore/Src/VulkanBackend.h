@@ -1,6 +1,10 @@
 #pragma once
 
 #include <vector>
+
+#if defined(_WIN32)
+#define VK_USE_PLATFORM_WIN32_KHR
+#endif
 #include <vulkan/vulkan.h>
 
 class VulkanBackend
@@ -13,7 +17,7 @@ public:
     typedef void(*DebugLogFunc)(const char*);
     static void SetDebugCallback(DebugLogFunc callback);
 
-    void Initialize();
+    void Initialize(void* windowHandle = nullptr);
     void Shutdown();
 
     void SetupRenderGraph();
@@ -26,6 +30,7 @@ private:
     // Initialization Helpers
     void CreateInstance();
     void SetupDebugMessenger();
+    void CreateSurface(void* windowHandle);
     void SelectPhysicalDevice();
     void CreateLogicalDevice();
     void CreateCommandObjects();
@@ -33,6 +38,7 @@ private:
     // Core Vulkan Handles
     VkInstance m_Instance = VK_NULL_HANDLE;
     VkDebugUtilsMessengerEXT m_DebugMessenger = VK_NULL_HANDLE;
+    VkSurfaceKHR m_Surface = VK_NULL_HANDLE;
     VkDevice m_Device = VK_NULL_HANDLE;
     VkPhysicalDevice m_PhysicalDevice = VK_NULL_HANDLE;
     VkQueue m_GraphicsQueue = VK_NULL_HANDLE;

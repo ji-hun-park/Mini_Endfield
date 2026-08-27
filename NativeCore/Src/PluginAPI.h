@@ -15,7 +15,7 @@ extern "C" {
     PLUGIN_API void SetDebugLogCallback(DebugLogCallback callback);
 
     // Initialize Vulkan backend (called by Unity)
-    PLUGIN_API void InitializeVulkanBackend();
+    PLUGIN_API void InitializeVulkanBackend(void* windowHandle);
 
     // Shutdown Vulkan backend
     PLUGIN_API void ShutdownVulkanBackend();

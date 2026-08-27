@@ -23,14 +23,18 @@ namespace Endfield.Rendering
             UnityEngine.Debug.Log(message);
         }
 
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetActiveWindow();
+
         public static void InitializeWithDebug()
         {
             SetDebugLogCallback(_debugCallback);
-            InitializeVulkanBackend();
+            IntPtr windowHandle = GetActiveWindow();
+            InitializeVulkanBackend(windowHandle);
         }
 
         [DllImport(pluginName)]
-        public static extern void InitializeVulkanBackend();
+        public static extern void InitializeVulkanBackend(IntPtr windowHandle);
 
         [DllImport(pluginName)]
         public static extern void ShutdownVulkanBackend();
