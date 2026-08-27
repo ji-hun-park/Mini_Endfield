@@ -3,6 +3,8 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <algorithm>
+#include <cstdint>
 
 static VulkanBackend::DebugLogFunc g_DebugCallback = nullptr;
 
@@ -48,6 +50,7 @@ void VulkanBackend::Initialize(void* windowHandle)
     SelectPhysicalDevice();
     CreateLogicalDevice();
     CreateCommandObjects();
+    CreateSwapchain();
 
     LogToUnity("[VulkanBackend] Successfully Initialized Native Vulkan Backend.");
 }
@@ -231,57 +234,78 @@ void VulkanBackend::CreateLogicalDevice()
     std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
     vkGetPhysicalDeviceQueueFamilyProperties(m_PhysicalDevice, &queueFamilyCount, queueFamilies.data());
 
-    uint32_t graphicsQueueFamilyIndex = 0;
+    bool foundGraphics = false;
+    bool foundPresent = false;
+
     for (uint32_t i = 0; i < queueFamilyCount; i++) {
-        if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-            graphicsQueueFamilyIndex = i;
-            break;
+        if (!foundGraphics && (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)) {
+            m_GraphicsQueueFamilyIndex = i;
+            foundGraphics = true;
+        }
+
+        if (!foundPresent && m_Surface != VK_NULL_HANDLE) {
+            VkBool32 presentSupport = false;
+            vkGetPhysicalDeviceSurfaceSupportKHR(m_PhysicalDevice, i, m_Surface, &presentSupport);
+            if (presentSupport) {
+                m_PresentQueueFamilyIndex = i;
+                foundPresent = true;
+            }
         }
     }
 
+    if (m_Surface == VK_NULL_HANDLE) {
+        // If no surface is provided, fallback to matching graphics queue for present queue
+        m_PresentQueueFamilyIndex = m_GraphicsQueueFamilyIndex;
+    }
+
+    std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
     float queuePriority = 1.0f;
-    VkDeviceQueueCreateInfo queueCreateInfo{};
-    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queueCreateInfo.queueFamilyIndex = graphicsQueueFamilyIndex;
-    queueCreateInfo.queueCount = 1;
-    queueCreateInfo.pQueuePriorities = &queuePriority;
+    
+    // Create unique queue families list
+    std::vector<uint32_t> uniqueQueueFamilies = { m_GraphicsQueueFamilyIndex };
+    if (m_GraphicsQueueFamilyIndex != m_PresentQueueFamilyIndex) {
+        uniqueQueueFamilies.push_back(m_PresentQueueFamilyIndex);
+    }
+
+    for (uint32_t queueFamily : uniqueQueueFamilies) {
+        VkDeviceQueueCreateInfo queueCreateInfo{};
+        queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queueCreateInfo.queueFamilyIndex = queueFamily;
+        queueCreateInfo.queueCount = 1;
+        queueCreateInfo.pQueuePriorities = &queuePriority;
+        queueCreateInfos.push_back(queueCreateInfo);
+    }
 
     VkDeviceCreateInfo deviceCreateInfo{};
     deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
-    deviceCreateInfo.queueCreateInfoCount = 1;
+    deviceCreateInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+    deviceCreateInfo.pQueueCreateInfos = queueCreateInfos.data();
+
+    // Enable Device Extensions (e.g., Swapchain)
+    const char* deviceExtensions[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+    deviceCreateInfo.enabledExtensionCount = 1;
+    deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions;
 
     if (vkCreateDevice(m_PhysicalDevice, &deviceCreateInfo, nullptr, &m_Device) != VK_SUCCESS) {
-        std::cerr << "[VulkanBackend] Failed to create logical device!\n";
+        LogToUnity("[VulkanBackend ERROR] Failed to create logical device!");
         return;
     }
-    vkGetDeviceQueue(m_Device, graphicsQueueFamilyIndex, 0, &m_GraphicsQueue);
+
+    vkGetDeviceQueue(m_Device, m_GraphicsQueueFamilyIndex, 0, &m_GraphicsQueue);
+    vkGetDeviceQueue(m_Device, m_PresentQueueFamilyIndex, 0, &m_PresentQueue);
 }
 
 void VulkanBackend::CreateCommandObjects()
 {
     if (m_Device == VK_NULL_HANDLE || m_PhysicalDevice == VK_NULL_HANDLE) return;
 
-    uint32_t queueFamilyCount = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(m_PhysicalDevice, &queueFamilyCount, nullptr);
-    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-    vkGetPhysicalDeviceQueueFamilyProperties(m_PhysicalDevice, &queueFamilyCount, queueFamilies.data());
-
-    uint32_t graphicsQueueFamilyIndex = 0;
-    for (uint32_t i = 0; i < queueFamilyCount; i++) {
-        if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-            graphicsQueueFamilyIndex = i;
-            break;
-        }
-    }
-
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    poolInfo.queueFamilyIndex = graphicsQueueFamilyIndex;
+    poolInfo.queueFamilyIndex = m_GraphicsQueueFamilyIndex;
 
     if (vkCreateCommandPool(m_Device, &poolInfo, nullptr, &m_CommandPool) != VK_SUCCESS) {
-        std::cerr << "[VulkanBackend] Failed to create command pool!\n";
+        LogToUnity("[VulkanBackend ERROR] Failed to create command pool!");
         return;
     }
 
@@ -292,8 +316,137 @@ void VulkanBackend::CreateCommandObjects()
     allocInfo.commandBufferCount = 1;
 
     if (vkAllocateCommandBuffers(m_Device, &allocInfo, &m_CommandBuffer) != VK_SUCCESS) {
-        std::cerr << "[VulkanBackend] Failed to allocate command buffers!\n";
+        LogToUnity("[VulkanBackend ERROR] Failed to allocate command buffers!");
     }
+}
+
+void VulkanBackend::CreateSwapchain()
+{
+    if (m_Device == VK_NULL_HANDLE || m_PhysicalDevice == VK_NULL_HANDLE || m_Surface == VK_NULL_HANDLE) {
+        return;
+    }
+
+    // 1. Query Surface Capabilities
+    VkSurfaceCapabilitiesKHR capabilities;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_PhysicalDevice, m_Surface, &capabilities);
+
+    uint32_t formatCount;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(m_PhysicalDevice, m_Surface, &formatCount, nullptr);
+    std::vector<VkSurfaceFormatKHR> formats(formatCount);
+    if (formatCount != 0) {
+        vkGetPhysicalDeviceSurfaceFormatsKHR(m_PhysicalDevice, m_Surface, &formatCount, formats.data());
+    }
+
+    uint32_t presentModeCount;
+    vkGetPhysicalDeviceSurfacePresentModesKHR(m_PhysicalDevice, m_Surface, &presentModeCount, nullptr);
+    std::vector<VkPresentModeKHR> presentModes(presentModeCount);
+    if (presentModeCount != 0) {
+        vkGetPhysicalDeviceSurfacePresentModesKHR(m_PhysicalDevice, m_Surface, &presentModeCount, presentModes.data());
+    }
+
+    if (formats.empty() || presentModes.empty()) {
+        LogToUnity("[VulkanBackend ERROR] Inadequate swapchain support!");
+        return;
+    }
+
+    // 2. Choose Format (Prefer B8G8R8A8_SRGB)
+    VkSurfaceFormatKHR surfaceFormat = formats[0];
+    for (const auto& availableFormat : formats) {
+        if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB && availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+            surfaceFormat = availableFormat;
+            break;
+        }
+    }
+
+    // 3. Choose Present Mode (Prefer Mailbox for triple buffering, else FIFO)
+    VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
+    for (const auto& availablePresentMode : presentModes) {
+        if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
+            presentMode = availablePresentMode;
+            break;
+        }
+    }
+
+    // 4. Choose Extent (Resolution)
+    VkExtent2D extent;
+    if (capabilities.currentExtent.width != UINT32_MAX) {
+        extent = capabilities.currentExtent;
+    } else {
+        // Fallback or arbitrary size if window manager allows free size
+        extent = { 1280, 720 }; 
+        extent.width = std::clamp(extent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+        extent.height = std::clamp(extent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+    }
+
+    // 5. Image Count (min + 1 for double/triple buffering)
+    uint32_t imageCount = capabilities.minImageCount + 1;
+    if (capabilities.maxImageCount > 0 && imageCount > capabilities.maxImageCount) {
+        imageCount = capabilities.maxImageCount;
+    }
+
+    VkSwapchainCreateInfoKHR createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    createInfo.surface = m_Surface;
+    createInfo.minImageCount = imageCount;
+    createInfo.imageFormat = surfaceFormat.format;
+    createInfo.imageColorSpace = surfaceFormat.colorSpace;
+    createInfo.imageExtent = extent;
+    createInfo.imageArrayLayers = 1;
+    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+    // Handle separate queue families
+    uint32_t queueFamilyIndices[] = { m_GraphicsQueueFamilyIndex, m_PresentQueueFamilyIndex };
+    if (m_GraphicsQueueFamilyIndex != m_PresentQueueFamilyIndex) {
+        createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+        createInfo.queueFamilyIndexCount = 2;
+        createInfo.pQueueFamilyIndices = queueFamilyIndices;
+    } else {
+        createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    }
+
+    createInfo.preTransform = capabilities.currentTransform;
+    createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    createInfo.presentMode = presentMode;
+    createInfo.clipped = VK_TRUE;
+    createInfo.oldSwapchain = VK_NULL_HANDLE;
+
+    if (vkCreateSwapchainKHR(m_Device, &createInfo, nullptr, &m_Swapchain) != VK_SUCCESS) {
+        LogToUnity("[VulkanBackend ERROR] Failed to create swapchain!");
+        return;
+    }
+
+    // Retrieve Images
+    vkGetSwapchainImagesKHR(m_Device, m_Swapchain, &imageCount, nullptr);
+    m_SwapchainImages.resize(imageCount);
+    vkGetSwapchainImagesKHR(m_Device, m_Swapchain, &imageCount, m_SwapchainImages.data());
+
+    m_SwapchainImageFormat = surfaceFormat.format;
+    m_SwapchainExtent = extent;
+
+    // Create Image Views
+    m_SwapchainImageViews.resize(m_SwapchainImages.size());
+    for (size_t i = 0; i < m_SwapchainImages.size(); i++) {
+        VkImageViewCreateInfo viewInfo{};
+        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        viewInfo.image = m_SwapchainImages[i];
+        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        viewInfo.format = m_SwapchainImageFormat;
+        viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+        viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        viewInfo.subresourceRange.baseMipLevel = 0;
+        viewInfo.subresourceRange.levelCount = 1;
+        viewInfo.subresourceRange.baseArrayLayer = 0;
+        viewInfo.subresourceRange.layerCount = 1;
+
+        if (vkCreateImageView(m_Device, &viewInfo, nullptr, &m_SwapchainImageViews[i]) != VK_SUCCESS) {
+            LogToUnity("[VulkanBackend ERROR] Failed to create image views!");
+        }
+    }
+
+    LogToUnity("[VulkanBackend] Swapchain and Image Views successfully created. (Count: " + std::to_string(imageCount) + ")");
 }
 
 void VulkanBackend::Shutdown()
@@ -302,6 +455,16 @@ void VulkanBackend::Shutdown()
     if (m_Device) {
         vkDeviceWaitIdle(m_Device);
         
+        for (auto imageView : m_SwapchainImageViews) {
+            vkDestroyImageView(m_Device, imageView, nullptr);
+        }
+        m_SwapchainImageViews.clear();
+
+        if (m_Swapchain) {
+            vkDestroySwapchainKHR(m_Device, m_Swapchain, nullptr);
+            m_Swapchain = VK_NULL_HANDLE;
+        }
+
         if (m_CommandPool) {
             vkDestroyCommandPool(m_Device, m_CommandPool, nullptr);
             m_CommandPool = VK_NULL_HANDLE;

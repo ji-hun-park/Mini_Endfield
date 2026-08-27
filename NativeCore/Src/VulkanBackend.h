@@ -34,6 +34,7 @@ private:
     void SelectPhysicalDevice();
     void CreateLogicalDevice();
     void CreateCommandObjects();
+    void CreateSwapchain();
 
     // Core Vulkan Handles
     VkInstance m_Instance = VK_NULL_HANDLE;
@@ -41,7 +42,20 @@ private:
     VkSurfaceKHR m_Surface = VK_NULL_HANDLE;
     VkDevice m_Device = VK_NULL_HANDLE;
     VkPhysicalDevice m_PhysicalDevice = VK_NULL_HANDLE;
+    
+    // Swapchain
+    VkSwapchainKHR m_Swapchain = VK_NULL_HANDLE;
+    VkFormat m_SwapchainImageFormat;
+    VkExtent2D m_SwapchainExtent;
+    std::vector<VkImage> m_SwapchainImages;
+    std::vector<VkImageView> m_SwapchainImageViews;
+
+    // Queues
     VkQueue m_GraphicsQueue = VK_NULL_HANDLE;
+    VkQueue m_PresentQueue = VK_NULL_HANDLE;
+    uint32_t m_GraphicsQueueFamilyIndex = 0;
+    uint32_t m_PresentQueueFamilyIndex = 0;
+
     VkCommandPool m_CommandPool = VK_NULL_HANDLE;
     VkCommandBuffer m_CommandBuffer = VK_NULL_HANDLE;
     
