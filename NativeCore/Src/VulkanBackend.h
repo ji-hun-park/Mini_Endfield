@@ -59,6 +59,14 @@ private:
     void CreateGraphicsPipeline();
     VkShaderModule CreateShaderModule(const std::vector<char>& code);
 
+    // Sync Objects
+    VkSemaphore m_ImageAvailableSemaphore = VK_NULL_HANDLE;
+    VkSemaphore m_RenderFinishedSemaphore = VK_NULL_HANDLE;
+    VkFence m_InFlightFence = VK_NULL_HANDLE;
+    void CreateSyncObjects();
+
+    uint32_t m_CurrentImageIndex = 0;
+
     // Queues
     VkQueue m_GraphicsQueue = VK_NULL_HANDLE;
     VkQueue m_PresentQueue = VK_NULL_HANDLE;

@@ -55,6 +55,7 @@ void VulkanBackend::Initialize(void* windowHandle)
     CreateRenderPass();
     CreateFramebuffers();
     CreateGraphicsPipeline();
+    CreateSyncObjects();
 
     LogToUnity("[VulkanBackend] Successfully Initialized Native Vulkan Backend.");
 }
@@ -685,11 +686,44 @@ void VulkanBackend::CreateGraphicsPipeline()
     vkDestroyShaderModule(m_Device, vertShaderModule, nullptr);
 }
 
+void VulkanBackend::CreateSyncObjects()
+{
+    if (m_Device == VK_NULL_HANDLE) return;
+
+    VkSemaphoreCreateInfo semaphoreInfo{};
+    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT; // Initialize as signaled
+
+    if (vkCreateSemaphore(m_Device, &semaphoreInfo, nullptr, &m_ImageAvailableSemaphore) != VK_SUCCESS ||
+        vkCreateSemaphore(m_Device, &semaphoreInfo, nullptr, &m_RenderFinishedSemaphore) != VK_SUCCESS ||
+        vkCreateFence(m_Device, &fenceInfo, nullptr, &m_InFlightFence) != VK_SUCCESS) {
+        LogToUnity("[VulkanBackend ERROR] Failed to create synchronization objects!");
+    } else {
+        LogToUnity("[VulkanBackend] Synchronization objects created successfully.");
+    }
+}
+
 void VulkanBackend::Shutdown()
 {
     // Wait for the logical device to finish operations before cleaning up
     if (m_Device) {
         vkDeviceWaitIdle(m_Device);
+        
+        if (m_ImageAvailableSemaphore) {
+            vkDestroySemaphore(m_Device, m_ImageAvailableSemaphore, nullptr);
+            m_ImageAvailableSemaphore = VK_NULL_HANDLE;
+        }
+        if (m_RenderFinishedSemaphore) {
+            vkDestroySemaphore(m_Device, m_RenderFinishedSemaphore, nullptr);
+            m_RenderFinishedSemaphore = VK_NULL_HANDLE;
+        }
+        if (m_InFlightFence) {
+            vkDestroyFence(m_Device, m_InFlightFence, nullptr);
+            m_InFlightFence = VK_NULL_HANDLE;
+        }
         
         for (auto framebuffer : m_SwapchainFramebuffers) {
             vkDestroyFramebuffer(m_Device, framebuffer, nullptr);
@@ -783,9 +817,16 @@ void VulkanBackend::SetupRenderGraph()
 
 void VulkanBackend::BeginFrame()
 {
-    if (m_CommandBuffer == VK_NULL_HANDLE) return;
+    if (m_Device == VK_NULL_HANDLE || m_CommandBuffer == VK_NULL_HANDLE || m_Swapchain == VK_NULL_HANDLE) return;
 
-    // Reset command buffer before starting new frame commands
+    // Wait for the previous frame to finish
+    vkWaitForFences(m_Device, 1, &m_InFlightFence, VK_TRUE, UINT64_MAX);
+    vkResetFences(m_Device, 1, &m_InFlightFence);
+
+    // Acquire next image from swapchain
+    vkAcquireNextImageKHR(m_Device, m_Swapchain, UINT64_MAX, m_ImageAvailableSemaphore, VK_NULL_HANDLE, &m_CurrentImageIndex);
+
+    // Reset and begin command buffer
     vkResetCommandBuffer(m_CommandBuffer, 0);
 
     VkCommandBufferBeginInfo beginInfo{};
@@ -793,15 +834,57 @@ void VulkanBackend::BeginFrame()
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
     if (vkBeginCommandBuffer(m_CommandBuffer, &beginInfo) != VK_SUCCESS) {
-        std::cerr << "[VulkanBackend] Failed to begin recording command buffer!\n";
+        LogToUnity("[VulkanBackend ERROR] Failed to begin recording command buffer!");
+        return;
     }
     
-    // Reset our redundant binding tracker for the new frame
+    // Begin Render Pass
+    VkRenderPassBeginInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = m_RenderPass;
+    renderPassInfo.framebuffer = m_SwapchainFramebuffers[m_CurrentImageIndex];
+    renderPassInfo.renderArea.offset = {0, 0};
+    renderPassInfo.renderArea.extent = m_SwapchainExtent;
+
+    VkClearValue clearColor = {{{0.1f, 0.1f, 0.15f, 1.0f}}}; // Dark blue-ish gray
+    renderPassInfo.clearValueCount = 1;
+    renderPassInfo.pClearValues = &clearColor;
+
+    vkCmdBeginRenderPass(m_CommandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    // Bind Graphics Pipeline
+    if (m_GraphicsPipeline != VK_NULL_HANDLE) {
+        vkCmdBindPipeline(m_CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicsPipeline);
+    }
+
+    // Set Dynamic States (Viewport & Scissor)
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = (float) m_SwapchainExtent.width;
+    viewport.height = (float) m_SwapchainExtent.height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(m_CommandBuffer, 0, 1, &viewport);
+
+    VkRect2D scissor{};
+    scissor.offset = {0, 0};
+    scissor.extent = m_SwapchainExtent;
+    vkCmdSetScissor(m_CommandBuffer, 0, 1, &scissor);
+
+    // Test Draw (Draw a single hardcoded triangle without vertex buffers)
+    // The user requested to call vkCmdDraw right after telling the resolution
+    vkCmdDraw(m_CommandBuffer, 3, 1, 0, 0);
+
+    // Reset our redundant binding tracker for the new frame (for SubmitBatch)
     m_LastBoundMaterialSet = 0xFFFFFFFF;
 }
 
 void VulkanBackend::SubmitBatch(const void* batchData, int instanceCount)
 {
+    // ... (Keep existing implementation or we can just leave it as is. 
+    // The instructions say "BeginFrame() 직후... vkCmdDraw를 호출" so I added it to BeginFrame. 
+    // SubmitBatch can stay for when we use actual mesh instances later).
     if (instanceCount == 0 || !batchData || m_CommandBuffer == VK_NULL_HANDLE) return;
 
     const InstanceData* instances = static_cast<const InstanceData*>(batchData);
@@ -856,26 +939,49 @@ void VulkanBackend::SubmitBatch(const void* batchData, int instanceCount)
 
 void VulkanBackend::EndFrame()
 {
-    if (m_CommandBuffer == VK_NULL_HANDLE) return;
+    if (m_CommandBuffer == VK_NULL_HANDLE || m_Device == VK_NULL_HANDLE) return;
+
+    // End Render Pass
+    vkCmdEndRenderPass(m_CommandBuffer);
 
     if (vkEndCommandBuffer(m_CommandBuffer) != VK_SUCCESS) {
-        std::cerr << "[VulkanBackend] Failed to record command buffer!\n";
+        LogToUnity("[VulkanBackend ERROR] Failed to record command buffer!");
         return;
     }
     
+    // Submit command buffer
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+    VkSemaphore waitSemaphores[] = {m_ImageAvailableSemaphore};
+    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = waitSemaphores;
+    submitInfo.pWaitDstStageMask = waitStages;
+
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &m_CommandBuffer;
     
-    if (vkQueueSubmit(m_GraphicsQueue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
-        std::cerr << "[VulkanBackend] Failed to submit draw command buffer!\n";
+    VkSemaphore signalSemaphores[] = {m_RenderFinishedSemaphore};
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = signalSemaphores;
+
+    if (vkQueueSubmit(m_GraphicsQueue, 1, &submitInfo, m_InFlightFence) != VK_SUCCESS) {
+        LogToUnity("[VulkanBackend ERROR] Failed to submit draw command buffer!");
+        return;
     }
     
-    // Simplistic CPU wait to guarantee queue completion for this skeleton
-    // In production, multi-buffering with VkFence would be used instead of stalling
-    vkQueueWaitIdle(m_GraphicsQueue);
-    
-    // Note: vkQueuePresentKHR would go here if rendering directly to a screen swapchain.
-    // Usually with Unity plugins, we render to a shared offscreen texture instead.
+    // Present
+    VkPresentInfoKHR presentInfo{};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    presentInfo.waitSemaphoreCount = 1;
+    presentInfo.pWaitSemaphores = signalSemaphores;
+
+    VkSwapchainKHR swapchains[] = {m_Swapchain};
+    presentInfo.swapchainCount = 1;
+    presentInfo.pSwapchains = swapchains;
+    presentInfo.pImageIndices = &m_CurrentImageIndex;
+    presentInfo.pResults = nullptr;
+
+    vkQueuePresentKHR(m_PresentQueue, &presentInfo);
 }
