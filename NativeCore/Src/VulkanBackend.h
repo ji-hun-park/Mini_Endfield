@@ -51,10 +51,13 @@ private:
     std::vector<VkImageView> m_SwapchainImageViews;
     std::vector<VkFramebuffer> m_SwapchainFramebuffers;
 
-    // Render Pass
+    // Render Pass & Pipeline
     VkRenderPass m_RenderPass = VK_NULL_HANDLE;
+    VkPipeline m_GraphicsPipeline = VK_NULL_HANDLE;
     void CreateRenderPass();
     void CreateFramebuffers();
+    void CreateGraphicsPipeline();
+    VkShaderModule CreateShaderModule(const std::vector<char>& code);
 
     // Queues
     VkQueue m_GraphicsQueue = VK_NULL_HANDLE;
