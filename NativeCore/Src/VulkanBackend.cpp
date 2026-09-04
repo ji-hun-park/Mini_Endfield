@@ -68,6 +68,13 @@ void VulkanBackend::OnPluginUnload()
         vkDestroyPipelineLayout(m_Device, m_PipelineLayout, nullptr);
         m_PipelineLayout = VK_NULL_HANDLE;
     }
+    if (m_InstanceBuffer && m_Device) {
+        vkDestroyBuffer(m_Device, m_InstanceBuffer, nullptr);
+        vkFreeMemory(m_Device, m_InstanceMemory, nullptr);
+        m_InstanceBuffer = VK_NULL_HANDLE;
+        m_InstanceMemory = VK_NULL_HANDLE;
+        m_InstanceBufferCapacity = 0;
+    }
 }
 
 void VulkanBackend::SetShaders(const char* vertCode, int vertSize, const char* fragCode, int fragSize)
@@ -113,27 +120,54 @@ void VulkanBackend::CreateGraphicsPipeline()
 
     VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
-    VkVertexInputBindingDescription bindingDescription{};
-    bindingDescription.binding = 0;
-    bindingDescription.stride = sizeof(Vertex);
-    bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    VkVertexInputBindingDescription bindingDescriptions[2]{};
+    // Binding 0: Per-vertex mesh attributes
+    bindingDescriptions[0].binding = 0;
+    bindingDescriptions[0].stride = sizeof(Vertex);
+    bindingDescriptions[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-    std::vector<VkVertexInputAttributeDescription> attributeDescriptions(2);
-    // Position
+    // Binding 1: Per-instance MVP matrix
+    bindingDescriptions[1].binding = 1;
+    bindingDescriptions[1].stride = sizeof(InstanceData);
+    bindingDescriptions[1].inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
+
+    std::vector<VkVertexInputAttributeDescription> attributeDescriptions(6);
+    // Position (Location 0)
     attributeDescriptions[0].binding = 0;
     attributeDescriptions[0].location = 0;
     attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
     attributeDescriptions[0].offset = offsetof(Vertex, pos);
-    // UV
+    // UV (Location 1)
     attributeDescriptions[1].binding = 0;
     attributeDescriptions[1].location = 1;
     attributeDescriptions[1].format = VK_FORMAT_R32G32_SFLOAT;
     attributeDescriptions[1].offset = offsetof(Vertex, uv);
 
+    // Instance MVP Matrix Column 0 (Location 2)
+    attributeDescriptions[2].binding = 1;
+    attributeDescriptions[2].location = 2;
+    attributeDescriptions[2].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    attributeDescriptions[2].offset = 0;
+    // Instance MVP Matrix Column 1 (Location 3)
+    attributeDescriptions[3].binding = 1;
+    attributeDescriptions[3].location = 3;
+    attributeDescriptions[3].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    attributeDescriptions[3].offset = 16;
+    // Instance MVP Matrix Column 2 (Location 4)
+    attributeDescriptions[4].binding = 1;
+    attributeDescriptions[4].location = 4;
+    attributeDescriptions[4].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    attributeDescriptions[4].offset = 32;
+    // Instance MVP Matrix Column 3 (Location 5)
+    attributeDescriptions[5].binding = 1;
+    attributeDescriptions[5].location = 5;
+    attributeDescriptions[5].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    attributeDescriptions[5].offset = 48;
+
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertexInputInfo.vertexBindingDescriptionCount = 1;
-    vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+    vertexInputInfo.vertexBindingDescriptionCount = 2;
+    vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions;
     vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
     vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
@@ -173,15 +207,10 @@ void VulkanBackend::CreateGraphicsPipeline()
     dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
     dynamicState.pDynamicStates = dynamicStates.data();
 
-    VkPushConstantRange pushConstantRange{};
-    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    pushConstantRange.offset = 0;
-    pushConstantRange.size = sizeof(float) * 16; // mat4
-
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.pushConstantRangeCount = 1;
-    pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+    pipelineLayoutInfo.pushConstantRangeCount = 0;
+    pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
     if (vkCreatePipelineLayout(m_Device, &pipelineLayoutInfo, nullptr, &m_PipelineLayout) != VK_SUCCESS) {
         LogToUnity("[VulkanBackend ERROR] Failed to create pipeline layout!");
@@ -210,6 +239,53 @@ void VulkanBackend::CreateGraphicsPipeline()
 
     vkDestroyShaderModule(m_Device, fragShaderModule, nullptr);
     vkDestroyShaderModule(m_Device, vertShaderModule, nullptr);
+}
+
+void VulkanBackend::EnsureInstanceBuffer(size_t requiredCount)
+{
+    if (requiredCount <= m_InstanceBufferCapacity && m_InstanceBuffer != VK_NULL_HANDLE) {
+        return;
+    }
+
+    if (m_InstanceBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(m_Device, m_InstanceBuffer, nullptr);
+        vkFreeMemory(m_Device, m_InstanceMemory, nullptr);
+        m_InstanceBuffer = VK_NULL_HANDLE;
+        m_InstanceMemory = VK_NULL_HANDLE;
+        m_InstanceBufferCapacity = 0;
+    }
+
+    size_t newCap = (requiredCount > 65536) ? requiredCount : 65536;
+    if (newCap < m_InstanceBufferCapacity * 2) {
+        newCap = m_InstanceBufferCapacity * 2;
+    }
+
+    VkBufferCreateInfo bufInfo{};
+    bufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufInfo.size = sizeof(InstanceData) * newCap;
+    bufInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    bufInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (vkCreateBuffer(m_Device, &bufInfo, nullptr, &m_InstanceBuffer) != VK_SUCCESS) {
+        LogToUnity("[VulkanBackend ERROR] Failed to create instance buffer!");
+        return;
+    }
+
+    VkMemoryRequirements memReqs;
+    vkGetBufferMemoryRequirements(m_Device, m_InstanceBuffer, &memReqs);
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memReqs.size;
+    allocInfo.memoryTypeIndex = FindMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    if (vkAllocateMemory(m_Device, &allocInfo, nullptr, &m_InstanceMemory) != VK_SUCCESS) {
+        LogToUnity("[VulkanBackend ERROR] Failed to allocate instance buffer memory!");
+        return;
+    }
+
+    vkBindBufferMemory(m_Device, m_InstanceBuffer, m_InstanceMemory, 0);
+    m_InstanceBufferCapacity = newCap;
 }
 
 void VulkanBackend::OnRenderEvent(int eventID)
@@ -249,7 +325,7 @@ void VulkanBackend::OnRenderEvent(int eventID)
     }
 
     if (m_GraphicsPipeline != VK_NULL_HANDLE) {
-        // Sort instances by sortKey: groups identical mesh IDs together!
+        // 1. Sort instances by sortKey: groups identical mesh IDs together!
         auto sortStart = std::chrono::high_resolution_clock::now();
         std::sort(m_RenderInstances.begin(), m_RenderInstances.end(), [](const InstanceData& a, const InstanceData& b) {
             return a.sortKey < b.sortKey;
@@ -257,6 +333,18 @@ void VulkanBackend::OnRenderEvent(int eventID)
         auto sortEnd = std::chrono::high_resolution_clock::now();
         benchmarkStats.sortingTimeMs = std::chrono::duration<float, std::milli>(sortEnd - sortStart).count();
 
+        // 2. Upload sorted instance data to GPU Instance Buffer (Binding 1)
+        EnsureInstanceBuffer(m_RenderInstances.size());
+        if (m_InstanceBuffer != VK_NULL_HANDLE && !m_RenderInstances.empty()) {
+            void* mappedData = nullptr;
+            VkDeviceSize uploadSize = sizeof(InstanceData) * m_RenderInstances.size();
+            if (vkMapMemory(m_Device, m_InstanceMemory, 0, uploadSize, 0, &mappedData) == VK_SUCCESS) {
+                memcpy(mappedData, m_RenderInstances.data(), static_cast<size_t>(uploadSize));
+                vkUnmapMemory(m_Device, m_InstanceMemory);
+            }
+        }
+
+        // 3. Batching & Instanced Draw Submissions
         auto batchStart = std::chrono::high_resolution_clock::now();
 
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicsPipeline);
@@ -273,35 +361,35 @@ void VulkanBackend::OnRenderEvent(int eventID)
         scissor.extent.height = m_Height;
         vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-        uint32_t lastBoundMeshId = 0xFFFFFFFF;
-        uint32_t lastBoundIndexCount = 0;
+        // Bind instance buffer once at binding 1
+        VkBuffer instanceBuffers[] = { m_InstanceBuffer };
+        VkDeviceSize instanceOffsets[] = { 0 };
+        vkCmdBindVertexBuffers(cmd, 1, 1, instanceBuffers, instanceOffsets);
 
-        for (const auto& instance : m_RenderInstances) {
-            uint32_t meshId = (instance.sortKey >> 16) & 0xFFFFFFFF;
+        size_t total = m_RenderInstances.size();
+        size_t startIdx = 0;
+        while (startIdx < total) {
+            uint32_t currentMeshId = static_cast<uint32_t>((m_RenderInstances[startIdx].sortKey >> 16) & 0xFFFFFFFF);
+            size_t endIdx = startIdx + 1;
+            while (endIdx < total && static_cast<uint32_t>((m_RenderInstances[endIdx].sortKey >> 16) & 0xFFFFFFFF) == currentMeshId) {
+                endIdx++;
+            }
+            uint32_t instanceCount = static_cast<uint32_t>(endIdx - startIdx);
+            uint32_t firstInstance = static_cast<uint32_t>(startIdx);
 
-            // Only rebind vertex & index buffers when the submesh actually changes!
-            if (meshId != lastBoundMeshId) {
-                auto it = m_Meshes.find(meshId);
-                if (it == m_Meshes.end()) {
-                    lastBoundMeshId = 0xFFFFFFFF;
-                    lastBoundIndexCount = 0;
-                    continue;
-                }
-
+            auto it = m_Meshes.find(currentMeshId);
+            if (it != m_Meshes.end() && it->second.indexCount > 0) {
                 const auto& mesh = it->second;
                 VkBuffer vertexBuffers[] = { mesh.vertexBuffer };
                 VkDeviceSize offsets[] = { 0 };
                 vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
                 vkCmdBindIndexBuffer(cmd, mesh.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
-                lastBoundMeshId = meshId;
-                lastBoundIndexCount = mesh.indexCount;
+                // ONE ZERO-ALLOCATION INSTANCED DRAW CALL FOR ALL INSTANCES OF THIS SUBMESH!
+                vkCmdDrawIndexed(cmd, mesh.indexCount, instanceCount, 0, 0, firstInstance);
             }
 
-            if (lastBoundIndexCount > 0) {
-                vkCmdPushConstants(cmd, m_PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float) * 16, instance.mvpMatrix);
-                vkCmdDrawIndexed(cmd, lastBoundIndexCount, 1, 0, 0, 0);
-            }
+            startIdx = endIdx;
         }
 
         auto batchEnd = std::chrono::high_resolution_clock::now();

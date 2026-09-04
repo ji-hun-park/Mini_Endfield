@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <vector>
 #include <unordered_map>
@@ -105,5 +105,11 @@ private:
     std::mutex m_BatchMutex;
     std::vector<InstanceData> m_PendingInstances;
     std::vector<InstanceData> m_RenderInstances;
+
+    // GPU Instancing Dynamic Buffer
+    VkBuffer m_InstanceBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory m_InstanceMemory = VK_NULL_HANDLE;
+    size_t m_InstanceBufferCapacity = 0;
+    void EnsureInstanceBuffer(size_t requiredCount);
 };
 

@@ -8,7 +8,7 @@ namespace Endfield.Rendering
 {
     public static class VulkanPluginWrapper
     {
-        private const string pluginName = "MiniEndfieldVulkanPlugin_v12";
+        private const string pluginName = "MiniEndfieldVulkanPlugin_v13";
 
         [StructLayout(LayoutKind.Sequential)]
         public struct NativeBenchmarkStats
