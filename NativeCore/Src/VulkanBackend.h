@@ -1,7 +1,9 @@
-#pragma once
+﻿#pragma once
 
 #include <vector>
 #include <unordered_map>
+#include <mutex>
+#include <algorithm>
 
 #if defined(_WIN32)
 #define VK_USE_PLATFORM_WIN32_KHR
@@ -100,5 +102,8 @@ private:
         uint64_t sortKey;
     };
 
-    std::vector<InstanceData> m_SubmittedInstances;
+    std::mutex m_BatchMutex;
+    std::vector<InstanceData> m_PendingInstances;
+    std::vector<InstanceData> m_RenderInstances;
 };
+

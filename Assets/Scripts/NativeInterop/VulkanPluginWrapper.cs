@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using Unity.Collections;
 using System;
 using UnityEngine;
@@ -8,7 +8,7 @@ namespace Endfield.Rendering
 {
     public static class VulkanPluginWrapper
     {
-        private const string pluginName = "MiniEndfieldVulkanPlugin_v9";
+        private const string pluginName = "MiniEndfieldVulkanPlugin_v10";
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate void DebugLogCallback([MarshalAs(UnmanagedType.LPStr)] string message);
@@ -46,6 +46,7 @@ namespace Endfield.Rendering
         public static extern void SubmitRenderBatch(IntPtr batchData, int instanceCount);
     }
 }
+
 
 
 

@@ -1,4 +1,4 @@
-#include "VulkanBackend.h"
+﻿#include "VulkanBackend.h"
 #include <iostream>
 #include <string>
 
@@ -216,14 +216,26 @@ void VulkanBackend::OnRenderEvent(int eventID)
     if (!m_UnityVulkan) return;
 
     UnityVulkanRecordingState recordingState;
-    // We request access to the queue if we needed it, but here we just want the command buffer state
     if (!m_UnityVulkan->CommandRecordingState(&recordingState, kUnityVulkanGraphicsQueueAccess_DontCare)) {
         return;
     }
 
     VkCommandBuffer cmd = recordingState.commandBuffer;
-    if (cmd == VK_NULL_HANDLE) { if (g_DebugCallback) g_DebugCallback("[VulkanBackend] cmd is NULL! Skipping."); return; }
-    
+    if (cmd == VK_NULL_HANDLE) {
+        return;
+    }
+
+    // Thread-safely grab pending instances from the main thread
+    {
+        std::lock_guard<std::mutex> lock(m_BatchMutex);
+        m_RenderInstances = std::move(m_PendingInstances);
+        m_PendingInstances.clear();
+    }
+
+    if (m_RenderInstances.empty()) {
+        return;
+    }
+
     // Create pipeline on first render event if needed (requires Unity's active render pass)
     if (m_GraphicsPipeline == VK_NULL_HANDLE && recordingState.renderPass != VK_NULL_HANDLE) {
         m_RenderPass = recordingState.renderPass;
@@ -231,35 +243,68 @@ void VulkanBackend::OnRenderEvent(int eventID)
     }
 
     if (m_GraphicsPipeline != VK_NULL_HANDLE) {
+        // Sort instances by sortKey: groups identical mesh IDs together!
+        std::sort(m_RenderInstances.begin(), m_RenderInstances.end(), [](const InstanceData& a, const InstanceData& b) {
+            return a.sortKey < b.sortKey;
+        });
+
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicsPipeline);
-        VkViewport viewport{}; viewport.width = (float)m_Width; viewport.height = (float)m_Height; viewport.minDepth = 0.0f; viewport.maxDepth = 1.0f; vkCmdSetViewport(cmd, 0, 1, &viewport);
-        VkRect2D scissor{}; scissor.extent.width = m_Width; scissor.extent.height = m_Height; vkCmdSetScissor(cmd, 0, 1, &scissor);
-        
-        for (const auto& instance : m_SubmittedInstances) {
-            uint32_t meshId = (instance.sortKey >> 16) & 0xFFFFFFFF; // assuming simple encoding
-            auto it = m_Meshes.find(meshId);
-            if (it == m_Meshes.end()) continue;
 
-            const auto& mesh = it->second;
-            VkBuffer vertexBuffers[] = { mesh.vertexBuffer };
-            VkDeviceSize offsets[] = { 0 };
-            vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
-            vkCmdBindIndexBuffer(cmd, mesh.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+        VkViewport viewport{};
+        viewport.width = (float)m_Width;
+        viewport.height = (float)m_Height;
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        vkCmdSetViewport(cmd, 0, 1, &viewport);
 
-            // The InstanceData contains the fully computed MVP matrix from C#
-            vkCmdPushConstants(cmd, m_PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float)*16, instance.mvpMatrix);
-            vkCmdDrawIndexed(cmd, mesh.indexCount, 1, 0, 0, 0);
+        VkRect2D scissor{};
+        scissor.extent.width = m_Width;
+        scissor.extent.height = m_Height;
+        vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+        uint32_t lastBoundMeshId = 0xFFFFFFFF;
+        uint32_t lastBoundIndexCount = 0;
+
+        for (const auto& instance : m_RenderInstances) {
+            uint32_t meshId = (instance.sortKey >> 16) & 0xFFFFFFFF;
+
+            // Only rebind vertex & index buffers when the submesh actually changes!
+            if (meshId != lastBoundMeshId) {
+                auto it = m_Meshes.find(meshId);
+                if (it == m_Meshes.end()) {
+                    lastBoundMeshId = 0xFFFFFFFF;
+                    lastBoundIndexCount = 0;
+                    continue;
+                }
+
+                const auto& mesh = it->second;
+                VkBuffer vertexBuffers[] = { mesh.vertexBuffer };
+                VkDeviceSize offsets[] = { 0 };
+                vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
+                vkCmdBindIndexBuffer(cmd, mesh.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+
+                lastBoundMeshId = meshId;
+                lastBoundIndexCount = mesh.indexCount;
+            }
+
+            if (lastBoundIndexCount > 0) {
+                vkCmdPushConstants(cmd, m_PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(float) * 16, instance.mvpMatrix);
+                vkCmdDrawIndexed(cmd, lastBoundIndexCount, 1, 0, 0, 0);
+            }
         }
     }
-    m_SubmittedInstances.clear();
+
+    m_RenderInstances.clear();
 }
 
 void VulkanBackend::SubmitBatch(const void* batchData, int instanceCount)
 {
+    if (batchData == nullptr || instanceCount <= 0) return;
     const InstanceData* instances = reinterpret_cast<const InstanceData*>(batchData);
-    m_SubmittedInstances.insert(m_SubmittedInstances.end(), instances, instances + instanceCount);
-}
 
+    std::lock_guard<std::mutex> lock(m_BatchMutex);
+    m_PendingInstances.assign(instances, instances + instanceCount);
+}
 void VulkanBackend::SetupRenderGraph() {}
 uint32_t VulkanBackend::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
     VkPhysicalDeviceMemoryProperties memProperties;
@@ -341,6 +386,8 @@ void VulkanBackend::SetResolution(int width, int height) {
     m_Width = width;
     m_Height = height;
 }
+
+
 
 
 
