@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using Unity.Entities;
 using Unity.Transforms;
 using Unity.Mathematics;
@@ -49,12 +49,20 @@ namespace Endfield.ECS.Systems
         public bool autoSpawnOnStart = true;
 
         // Static cache for uploaded meshes to guarantee no duplicate Vulkan buffers are created
-        private static readonly Dictionary<Mesh, uint> s_UploadedMeshCache = new Dictionary<Mesh, uint>();
+        private static readonly Dictionary<(Mesh, int), uint> s_UploadedMeshCache = new Dictionary<(Mesh, int), uint>();
         public static uint GlobalMeshIdCounter = 0;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStaticData()
+        {
+            s_UploadedMeshCache.Clear();
+            GlobalMeshIdCounter = 0;
+        }
 
         public struct SubmeshData
         {
             public Mesh mesh;
+            public int subMeshIndex;
             public uint meshId;
             public ulong sortKey;
             public LocalTransform relTransform;
@@ -273,6 +281,8 @@ namespace Endfield.ECS.Systems
             var list = new List<SubmeshData>();
             Transform root = prefab.transform;
 
+            var addedGameObjects = new HashSet<GameObject>();
+
             // 1. MeshFilters
             MeshFilter[] meshFilters = prefab.GetComponentsInChildren<MeshFilter>(true);
             foreach (var mf in meshFilters)
@@ -280,60 +290,68 @@ namespace Endfield.ECS.Systems
                 Mesh mesh = mf.sharedMesh;
                 if (mesh == null) continue;
 
-                uint meshId = UploadMeshToVulkan(mesh);
-                ulong sortKey = ((ulong)meshId) << 16;
+                addedGameObjects.Add(mf.gameObject);
 
                 Transform t = mf.transform;
                 Vector3 relPos = root.InverseTransformPoint(t.position);
                 Quaternion relRot = Quaternion.Inverse(root.rotation) * t.rotation;
                 float relScale = root.lossyScale.x != 0 ? t.lossyScale.x / root.lossyScale.x : 1f;
 
-                list.Add(new SubmeshData
+                int subCount = mesh.subMeshCount;
+                for (int subIdx = 0; subIdx < subCount; subIdx++)
                 {
-                    mesh = mesh,
-                    meshId = meshId,
-                    sortKey = sortKey,
-                    relTransform = LocalTransform.FromPositionRotationScale(relPos, relRot, relScale),
-                    boundsCenter = mesh.bounds.center,
-                    boundsExtents = mesh.bounds.extents * 1.5f + new Vector3(0.5f, 0.5f, 0.5f)
-                });
+                    uint meshId = UploadMeshToVulkan(mesh, subIdx);
+                    ulong sortKey = ((ulong)meshId) << 16;
+                    var subBounds = mesh.GetSubMesh(subIdx).bounds;
+
+                    list.Add(new SubmeshData
+                    {
+                        mesh = mesh,
+                        subMeshIndex = subIdx,
+                        meshId = meshId,
+                        sortKey = sortKey,
+                        relTransform = LocalTransform.FromPositionRotationScale(relPos, relRot, relScale),
+                        boundsCenter = subBounds.center,
+                        boundsExtents = subBounds.extents * 1.5f + new Vector3(0.5f, 0.5f, 0.5f)
+                    });
+                }
             }
 
-            // 2. SkinnedMeshRenderers
+            // 2. SkinnedMeshRenderers (only skip if the same GameObject was already added via MeshFilter)
             SkinnedMeshRenderer[] smrs = prefab.GetComponentsInChildren<SkinnedMeshRenderer>(true);
             foreach (var smr in smrs)
             {
                 Mesh mesh = smr.sharedMesh;
                 if (mesh == null) continue;
+                if (addedGameObjects.Contains(smr.gameObject)) continue;
 
-                bool duplicate = false;
-                foreach (var existing in list)
-                {
-                    if (existing.mesh == mesh)
-                    {
-                        duplicate = true;
-                        break;
-                    }
-                }
-                if (duplicate) continue;
-
-                uint meshId = UploadMeshToVulkan(mesh);
-                ulong sortKey = ((ulong)meshId) << 16;
+                addedGameObjects.Add(smr.gameObject);
 
                 Transform t = smr.transform;
                 Vector3 relPos = root.InverseTransformPoint(t.position);
                 Quaternion relRot = Quaternion.Inverse(root.rotation) * t.rotation;
                 float relScale = root.lossyScale.x != 0 ? t.lossyScale.x / root.lossyScale.x : 1f;
 
-                list.Add(new SubmeshData
+
+
+                int subCount = mesh.subMeshCount;
+                for (int subIdx = 0; subIdx < subCount; subIdx++)
                 {
-                    mesh = mesh,
-                    meshId = meshId,
-                    sortKey = sortKey,
-                    relTransform = LocalTransform.FromPositionRotationScale(relPos, relRot, relScale),
-                    boundsCenter = mesh.bounds.center,
-                    boundsExtents = mesh.bounds.extents * 1.5f + new Vector3(0.5f, 0.5f, 0.5f)
-                });
+                    uint meshId = UploadMeshToVulkan(mesh, subIdx);
+                    ulong sortKey = ((ulong)meshId) << 16;
+                    var subBounds = mesh.GetSubMesh(subIdx).bounds;
+
+                    list.Add(new SubmeshData
+                    {
+                        mesh = mesh,
+                        subMeshIndex = subIdx,
+                        meshId = meshId,
+                        sortKey = sortKey,
+                        relTransform = LocalTransform.FromPositionRotationScale(relPos, relRot, relScale),
+                        boundsCenter = subBounds.center,
+                        boundsExtents = subBounds.extents * 1.5f + new Vector3(0.5f, 0.5f, 0.5f)
+                    });
+                }
             }
 
             return list;
@@ -341,10 +359,12 @@ namespace Endfield.ECS.Systems
 
         /// <summary>
         /// Uploads vertex and index buffers to the native Vulkan plugin if not already cached.
+        /// Supports individual submeshes via subMeshIndex.
         /// </summary>
-        public static uint UploadMeshToVulkan(Mesh targetMesh)
+        public static uint UploadMeshToVulkan(Mesh targetMesh, int subMeshIndex = 0)
         {
-            if (s_UploadedMeshCache.TryGetValue(targetMesh, out uint cachedId))
+            var cacheKey = (targetMesh, subMeshIndex);
+            if (s_UploadedMeshCache.TryGetValue(cacheKey, out uint cachedId))
             {
                 return cachedId;
             }
@@ -353,7 +373,9 @@ namespace Endfield.ECS.Systems
 
             Vector3[] vertices = targetMesh.vertices;
             Vector2[] uvs = targetMesh.uv;
-            int[] indices = targetMesh.triangles;
+            int[] indices = (targetMesh.subMeshCount > 1)
+                ? targetMesh.GetTriangles(subMeshIndex)
+                : targetMesh.triangles;
 
             if (uvs == null || uvs.Length != vertices.Length)
             {
@@ -388,8 +410,8 @@ namespace Endfield.ECS.Systems
                     indexHandle.AddrOfPinnedObject(),
                     indices.Length
                 );
-                s_UploadedMeshCache[targetMesh] = meshId;
-                Debug.Log($"[CharacterSpawner] Uploaded submesh '{targetMesh.name}' to Vulkan (ID: {meshId}, Verts: {vertices.Length}, Tris: {indices.Length / 3})");
+                s_UploadedMeshCache[cacheKey] = meshId;
+                Debug.Log($"[CharacterSpawner] Uploaded submesh '{targetMesh.name}' [SubMesh {subMeshIndex}] to Vulkan (ID: {meshId}, Verts: {vertices.Length}, Tris: {indices.Length / 3})");
             }
             finally
             {
@@ -403,7 +425,7 @@ namespace Endfield.ECS.Systems
         private void OnDrawGizmosSelected()
         {
             Vector3 center = transform.position + new Vector3(0, baseHeight + 1f, 0);
-            
+
             // Draw Spawn Area (Cyan)
             Gizmos.color = new Color(0f, 1f, 1f, 0.4f);
             Gizmos.DrawWireCube(center, new Vector3(spawnAreaSize.x, 2f, spawnAreaSize.y));
@@ -440,6 +462,7 @@ namespace Endfield.ECS.Systems
     public struct SubmeshBakeData : IBufferElementData
     {
         public UnityObjectRef<Mesh> MeshRef;
+        public int SubMeshIndex;
         public LocalTransform RelTransform;
         public float3 BoundsCenter;
         public float3 BoundsExtents;
@@ -480,41 +503,65 @@ namespace Endfield.ECS.Systems
             var buffer = AddBuffer<SubmeshBakeData>(entity);
             Transform root = authoring.characterPrefab.transform;
 
+            var addedGameObjects = new HashSet<GameObject>();
+
             MeshFilter[] meshFilters = authoring.characterPrefab.GetComponentsInChildren<MeshFilter>(true);
             foreach (var mf in meshFilters)
             {
                 if (mf.sharedMesh == null) continue;
+                addedGameObjects.Add(mf.gameObject);
                 Transform t = mf.transform;
                 Vector3 relPos = root.InverseTransformPoint(t.position);
                 Quaternion relRot = Quaternion.Inverse(root.rotation) * t.rotation;
                 float relScale = root.lossyScale.x != 0 ? t.lossyScale.x / root.lossyScale.x : 1f;
 
-                buffer.Add(new SubmeshBakeData
+
+
+
+                int subCount = mf.sharedMesh.subMeshCount;
+                for (int subIdx = 0; subIdx < subCount; subIdx++)
                 {
-                    MeshRef = mf.sharedMesh,
-                    RelTransform = LocalTransform.FromPositionRotationScale(relPos, relRot, relScale),
-                    BoundsCenter = mf.sharedMesh.bounds.center,
-                    BoundsExtents = mf.sharedMesh.bounds.extents * 1.5f + new Vector3(0.5f, 0.5f, 0.5f)
-                });
+                    var subBounds = mf.sharedMesh.GetSubMesh(subIdx).bounds;
+                    buffer.Add(new SubmeshBakeData
+                    {
+                        MeshRef = mf.sharedMesh,
+                        SubMeshIndex = subIdx,
+                        RelTransform = LocalTransform.FromPositionRotationScale(relPos, relRot, relScale),
+                        BoundsCenter = subBounds.center,
+                        BoundsExtents = subBounds.extents * 1.5f + new Vector3(0.5f, 0.5f, 0.5f)
+                    });
+                }
             }
 
             SkinnedMeshRenderer[] smrs = authoring.characterPrefab.GetComponentsInChildren<SkinnedMeshRenderer>(true);
             foreach (var smr in smrs)
             {
                 if (smr.sharedMesh == null) continue;
+                if (addedGameObjects.Contains(smr.gameObject)) continue;
+                addedGameObjects.Add(smr.gameObject);
+
                 Transform t = smr.transform;
                 Vector3 relPos = root.InverseTransformPoint(t.position);
                 Quaternion relRot = Quaternion.Inverse(root.rotation) * t.rotation;
                 float relScale = root.lossyScale.x != 0 ? t.lossyScale.x / root.lossyScale.x : 1f;
 
-                buffer.Add(new SubmeshBakeData
+
+                int subCount = smr.sharedMesh.subMeshCount;
+                for (int subIdx = 0; subIdx < subCount; subIdx++)
                 {
-                    MeshRef = smr.sharedMesh,
-                    RelTransform = LocalTransform.FromPositionRotationScale(relPos, relRot, relScale),
-                    BoundsCenter = smr.sharedMesh.bounds.center,
-                    BoundsExtents = smr.sharedMesh.bounds.extents * 1.5f + new Vector3(0.5f, 0.5f, 0.5f)
-                });
+                    var subBounds = smr.sharedMesh.GetSubMesh(subIdx).bounds;
+                    buffer.Add(new SubmeshBakeData
+                    {
+                        MeshRef = smr.sharedMesh,
+                        SubMeshIndex = subIdx,
+                        RelTransform = LocalTransform.FromPositionRotationScale(relPos, relRot, relScale),
+                        BoundsCenter = subBounds.center,
+                        BoundsExtents = subBounds.extents * 1.5f + new Vector3(0.5f, 0.5f, 0.5f)
+                    });
+                }
             }
         }
     }
 }
+
+

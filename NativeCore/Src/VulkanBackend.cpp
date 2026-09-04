@@ -92,7 +92,7 @@ VkShaderModule VulkanBackend::CreateShaderModule(const std::vector<char>& code) 
 
 void VulkanBackend::CreateGraphicsPipeline()
 {
-    if (m_Device == VK_NULL_HANDLE || m_RenderPass == VK_NULL_HANDLE) return;
+    if (m_Device == VK_NULL_HANDLE) return;
     if (m_VertShaderCode.empty() || m_FragShaderCode.empty()) return;
 
     VkShaderModule vertShaderModule = CreateShaderModule(m_VertShaderCode);
@@ -319,7 +319,7 @@ uint32_t VulkanBackend::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlag
 }
 
 void VulkanBackend::LoadMesh(uint32_t meshId, const float* vertices, int vertexCount, const uint32_t* indices, int indexCount) {
-    if (m_Device == VK_NULL_HANDLE || m_RenderPass == VK_NULL_HANDLE) return;
+    if (m_Device == VK_NULL_HANDLE) return;
     
 
     MeshBuffers buffers{};
@@ -377,7 +377,7 @@ void VulkanBackend::LoadMesh(uint32_t meshId, const float* vertices, int vertexC
     memcpy(iData, indices, (size_t)indexBufferSize);
     vkUnmapMemory(m_Device, buffers.indexMemory);
 
-    m_Meshes[meshId] = buffers;
+    { std::lock_guard<std::mutex> lock(m_BatchMutex); m_Meshes[meshId] = buffers; }
     LogToUnity("[VulkanBackend] Mesh loaded and buffers created.");
 }
 
@@ -386,6 +386,7 @@ void VulkanBackend::SetResolution(int width, int height) {
     m_Width = width;
     m_Height = height;
 }
+
 
 
 

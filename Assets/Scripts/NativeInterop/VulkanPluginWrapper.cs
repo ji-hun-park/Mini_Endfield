@@ -8,7 +8,7 @@ namespace Endfield.Rendering
 {
     public static class VulkanPluginWrapper
     {
-        private const string pluginName = "MiniEndfieldVulkanPlugin_v10";
+        private const string pluginName = "MiniEndfieldVulkanPlugin_v11";
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate void DebugLogCallback([MarshalAs(UnmanagedType.LPStr)] string message);
@@ -46,6 +46,7 @@ namespace Endfield.Rendering
         public static extern void SubmitRenderBatch(IntPtr batchData, int instanceCount);
     }
 }
+
 
 
 

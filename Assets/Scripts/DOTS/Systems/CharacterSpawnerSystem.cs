@@ -1,4 +1,4 @@
-﻿using Unity.Entities;
+using Unity.Entities;
 using Unity.Transforms;
 using Unity.Mathematics;
 using UnityEngine;
@@ -53,12 +53,13 @@ namespace Endfield.ECS.Systems
                         Mesh m = item.MeshRef.Value;
                         if (m == null) continue;
 
-                        uint meshId = CharacterSpawner.UploadMeshToVulkan(m);
+                        uint meshId = CharacterSpawner.UploadMeshToVulkan(m, item.SubMeshIndex);
                         ulong sortKey = ((ulong)meshId) << 16;
 
                         submeshList.Add(new CharacterSpawner.SubmeshData
                         {
                             mesh = m,
+                            subMeshIndex = item.SubMeshIndex,
                             meshId = meshId,
                             sortKey = sortKey,
                             relTransform = item.RelTransform,
