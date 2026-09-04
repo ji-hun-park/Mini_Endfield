@@ -1,4 +1,7 @@
 using UnityEngine;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 using Endfield.ECS.Systems;
 
 namespace Endfield.NativeInterop
@@ -23,6 +26,7 @@ namespace Endfield.NativeInterop
         private bool m_StylesInitialized = false;
 
         private string m_LastReportPath = "";
+        private int m_LastToggleFrame = -1;
 
         private void Start()
         {
@@ -30,13 +34,86 @@ namespace Endfield.NativeInterop
             m_Manager.OnBenchmarkCompleted += (path) => m_LastReportPath = path;
         }
 
+        private void ToggleHUD()
+        {
+            if (Time.frameCount == m_LastToggleFrame) return;
+            m_LastToggleFrame = Time.frameCount;
+            m_ShowHUD = !m_ShowHUD;
+        }
+
         private void Update()
         {
-            if (Input.GetKeyDown(m_ToggleKey) || Input.GetKeyDown(m_AlternateToggleKey))
+            if (WasToggleKeyPressed())
             {
-                m_ShowHUD = !m_ShowHUD;
+                ToggleHUD();
             }
         }
+
+        private bool WasToggleKeyPressed()
+        {
+#if ENABLE_INPUT_SYSTEM
+            var keyboard = Keyboard.current;
+            if (keyboard != null)
+            {
+                if (IsKeyPressed(keyboard, m_ToggleKey) || IsKeyPressed(keyboard, m_AlternateToggleKey))
+                {
+                    return true;
+                }
+            }
+#endif
+
+#if ENABLE_LEGACY_INPUT_MANAGER
+            try
+            {
+                if (Input.GetKeyDown(m_ToggleKey) || Input.GetKeyDown(m_AlternateToggleKey))
+                {
+                    return true;
+                }
+            }
+            catch (System.InvalidOperationException)
+            {
+                // Active input handler is set to New Input System only
+            }
+#endif
+
+            return false;
+        }
+
+#if ENABLE_INPUT_SYSTEM
+        private bool IsKeyPressed(Keyboard keyboard, KeyCode key)
+        {
+            if (keyboard == null || key == KeyCode.None) return false;
+
+            // Fast paths for common benchmark toggle keys
+            if (key == KeyCode.F1 && keyboard.f1Key.wasPressedThisFrame) return true;
+            if (key == KeyCode.B && keyboard.bKey.wasPressedThisFrame) return true;
+            if (key == KeyCode.F2 && keyboard.f2Key.wasPressedThisFrame) return true;
+            if (key == KeyCode.F3 && keyboard.f3Key.wasPressedThisFrame) return true;
+            if (key == KeyCode.F12 && keyboard.f12Key.wasPressedThisFrame) return true;
+
+            // Fallback: enum parse
+            if (System.Enum.TryParse<Key>(key.ToString(), true, out var inputKey))
+            {
+                if (inputKey != Key.None)
+                {
+                    try
+                    {
+                        var control = keyboard[inputKey];
+                        if (control != null && control.wasPressedThisFrame)
+                        {
+                            return true;
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore lookup exceptions on unsupported keys
+                    }
+                }
+            }
+
+            return false;
+        }
+#endif
 
         private void InitializeStyles()
         {
@@ -108,12 +185,22 @@ namespace Endfield.NativeInterop
 
         private void OnGUI()
         {
+            Event e = Event.current;
+            if (e != null && e.type == EventType.KeyDown)
+            {
+                if (e.keyCode == m_ToggleKey || e.keyCode == m_AlternateToggleKey)
+                {
+                    ToggleHUD();
+                    e.Use();
+                }
+            }
+
             if (!m_ShowHUD)
             {
                 InitializeStyles();
                 if (GUI.Button(new Rect(15, 15, 190, 26), $"Show Benchmark ({m_ToggleKey}/{m_AlternateToggleKey})", m_ButtonStyle))
                 {
-                    m_ShowHUD = true;
+                    ToggleHUD();
                 }
                 return;
             }
