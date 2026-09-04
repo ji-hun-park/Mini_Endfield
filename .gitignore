@@ -118,3 +118,8 @@ InitTestScene*.unity*
 
 # FBX
 /[Aa]ssets/FBX
+
+# NativeCore build artifacts
+NativeCore/build/
+NativeCore/.vs/
+

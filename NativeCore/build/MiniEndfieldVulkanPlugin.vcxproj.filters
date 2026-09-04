@@ -7,6 +7,9 @@
     <ClCompile Include="D:\ArrFolder\WorkSpaces\UnityWorkSpace\Mini_Endfield\NativeCore\Src\VulkanBackend.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="D:\ArrFolder\WorkSpaces\UnityWorkSpace\Mini_Endfield\NativeCore\Src\Benchmark.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="D:\ArrFolder\WorkSpaces\UnityWorkSpace\Mini_Endfield\NativeCore\Src\PluginAPI.h">
@@ -19,6 +22,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="D:\ArrFolder\WorkSpaces\UnityWorkSpace\Mini_Endfield\NativeCore\Src\SortKey.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\ArrFolder\WorkSpaces\UnityWorkSpace\Mini_Endfield\NativeCore\Src\Benchmark.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -11,10 +11,15 @@ namespace Endfield.ECS.Systems
     [UpdateInGroup(typeof(PresentationSystemGroup))]
     public partial class SoftwareCullingSystem : SystemBase
     {
+        public static bool EnableCulling = true;
+        public static float LastCullingTimeMs = 0f;
+
         protected override void OnUpdate()
         {
             var camera = UnityEngine.Camera.main;
             if (camera == null) return;
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
 
             // 1. Get Frustum Planes from Camera
             float3 cameraPos = camera.transform.position;
@@ -29,16 +34,20 @@ namespace Endfield.ECS.Systems
             var cullingJob = new CullingJob
             {
                 CameraPosition = cameraPos,
-                FrustumPlanes = frustumPlanes
+                FrustumPlanes = frustumPlanes,
+                EnableCulling = EnableCulling ? (byte)1 : (byte)0
             };
 
             Dependency = cullingJob.ScheduleParallel(Dependency);
+            sw.Stop();
+            LastCullingTimeMs = (float)sw.Elapsed.TotalMilliseconds;
         }
 
         [BurstCompile]
         private partial struct CullingJob : IJobEntity
         {
             public float3 CameraPosition;
+            public byte EnableCulling;
 
             [DeallocateOnJobCompletion]
             [ReadOnly] public NativeArray<float4> FrustumPlanes;
@@ -54,21 +63,24 @@ namespace Endfield.ECS.Systems
                 float3 forward = transform.Forward * aabb.Extents.z;
                 float3 worldExtents = math.abs(right) + math.abs(up) + math.abs(forward);
 
-                // 2. Frustum Culling (Phase 1) require Phase 2 and Phase 3
+                // 2. Frustum Culling (Phase 1)
                 bool isVisible = true;
-                for (int i = 0; i < 6; i++)
+                if (EnableCulling == 1)
                 {
-                    float4 plane = FrustumPlanes[i];
-                    float3 normal = plane.xyz;
-                    float distance = plane.w;
-
-                    float r = math.dot(worldExtents, math.abs(normal));
-                    float d = math.dot(normal, worldCenter) + distance;
-
-                    if (d < -r)
+                    for (int i = 0; i < 6; i++)
                     {
-                        isVisible = false;
-                        break;
+                        float4 plane = FrustumPlanes[i];
+                        float3 normal = plane.xyz;
+                        float distance = plane.w;
+
+                        float r = math.dot(worldExtents, math.abs(normal));
+                        float d = math.dot(normal, worldCenter) + distance;
+
+                        if (d < -r)
+                        {
+                            isVisible = false;
+                            break;
+                        }
                     }
                 }
 

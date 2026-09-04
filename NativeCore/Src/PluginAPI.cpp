@@ -1,5 +1,6 @@
 #include "PluginAPI.h"
 #include "VulkanBackend.h"
+#include "Benchmark.h"
 
 static VulkanBackend* g_VulkanBackend = nullptr;
 
@@ -98,6 +99,24 @@ extern "C" {
         {
             g_VulkanBackend->SetResolution(width, height);
         }
+    }
+
+    PLUGIN_API void GetLatestBenchmarkStats(NativeBenchmarkStats* outStats)
+    {
+        if (outStats)
+        {
+            *outStats = Endfield::BenchmarkManager::Instance().GetLatestFrameStats();
+        }
+    }
+
+    PLUGIN_API void SetBenchmarkCullingOptions(bool enableFrustum, bool enableOcclusion)
+    {
+        Endfield::BenchmarkManager::Instance().SetCullingOptions(enableFrustum, enableOcclusion);
+    }
+
+    PLUGIN_API void RunNativeHeadlessBenchmark(int instanceCount, int iterations, NativeBenchmarkStats* outAverages)
+    {
+        Endfield::BenchmarkManager::Instance().RunHeadlessBenchmark(instanceCount, iterations, outAverages);
     }
 }
 

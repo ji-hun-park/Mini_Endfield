@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using Unity.Collections;
 using System;
 using UnityEngine;
@@ -8,7 +8,23 @@ namespace Endfield.Rendering
 {
     public static class VulkanPluginWrapper
     {
-        private const string pluginName = "MiniEndfieldVulkanPlugin_v11";
+        private const string pluginName = "MiniEndfieldVulkanPlugin_v12";
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct NativeBenchmarkStats
+        {
+            public uint totalInstances;
+            public uint visibleInstances;
+            public uint culledFrustum;
+            public uint culledOcclusion;
+            public float dotsMovementTimeMs;
+            public float frustumCullingTimeMs;
+            public float occlusionCullingTimeMs;
+            public float sortingTimeMs;
+            public float batchingTimeMs;
+            public float renderSubmitTimeMs;
+            public float totalNativeFrameTimeMs;
+        }
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate void DebugLogCallback([MarshalAs(UnmanagedType.LPStr)] string message);
@@ -44,6 +60,15 @@ namespace Endfield.Rendering
 
         [DllImport(pluginName)]
         public static extern void SubmitRenderBatch(IntPtr batchData, int instanceCount);
+
+        [DllImport(pluginName)]
+        public static extern void GetLatestBenchmarkStats(out NativeBenchmarkStats stats);
+
+        [DllImport(pluginName)]
+        public static extern void SetBenchmarkCullingOptions(bool enableFrustum, bool enableOcclusion);
+
+        [DllImport(pluginName)]
+        public static extern void RunNativeHeadlessBenchmark(int instanceCount, int iterations, out NativeBenchmarkStats averages);
     }
 }
 

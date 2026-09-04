@@ -12,6 +12,8 @@
 #include "IUnityGraphics.h"
 #include "IUnityGraphicsVulkan.h"
 
+#include "Benchmark.h"
+
 extern "C" {
     
     // Unity Plugin Lifecycle
@@ -32,5 +34,11 @@ extern "C" {
 
     typedef void(*DebugLogCallback)(const char*);
     PLUGIN_API void SetDebugLogCallback(DebugLogCallback callback);
+
+    using NativeBenchmarkStats = Endfield::NativeBenchmarkStats;
+
+    PLUGIN_API void GetLatestBenchmarkStats(NativeBenchmarkStats* outStats);
+    PLUGIN_API void SetBenchmarkCullingOptions(bool enableFrustum, bool enableOcclusion);
+    PLUGIN_API void RunNativeHeadlessBenchmark(int instanceCount, int iterations, NativeBenchmarkStats* outAverages);
 
 }

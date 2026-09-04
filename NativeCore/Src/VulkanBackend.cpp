@@ -1,4 +1,5 @@
-﻿#include "VulkanBackend.h"
+#include "VulkanBackend.h"
+#include "Benchmark.h"
 #include <iostream>
 #include <string>
 
@@ -236,6 +237,11 @@ void VulkanBackend::OnRenderEvent(int eventID)
         return;
     }
 
+    Endfield::BenchmarkManager::Instance().BeginFrame();
+    auto& benchmarkStats = Endfield::BenchmarkManager::Instance().GetCurrentFrameStats();
+    benchmarkStats.totalInstances = static_cast<uint32_t>(m_RenderInstances.size());
+    benchmarkStats.visibleInstances = static_cast<uint32_t>(m_RenderInstances.size());
+
     // Create pipeline on first render event if needed (requires Unity's active render pass)
     if (m_GraphicsPipeline == VK_NULL_HANDLE && recordingState.renderPass != VK_NULL_HANDLE) {
         m_RenderPass = recordingState.renderPass;
@@ -244,9 +250,14 @@ void VulkanBackend::OnRenderEvent(int eventID)
 
     if (m_GraphicsPipeline != VK_NULL_HANDLE) {
         // Sort instances by sortKey: groups identical mesh IDs together!
+        auto sortStart = std::chrono::high_resolution_clock::now();
         std::sort(m_RenderInstances.begin(), m_RenderInstances.end(), [](const InstanceData& a, const InstanceData& b) {
             return a.sortKey < b.sortKey;
         });
+        auto sortEnd = std::chrono::high_resolution_clock::now();
+        benchmarkStats.sortingTimeMs = std::chrono::duration<float, std::milli>(sortEnd - sortStart).count();
+
+        auto batchStart = std::chrono::high_resolution_clock::now();
 
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicsPipeline);
 
@@ -292,7 +303,12 @@ void VulkanBackend::OnRenderEvent(int eventID)
                 vkCmdDrawIndexed(cmd, lastBoundIndexCount, 1, 0, 0, 0);
             }
         }
+
+        auto batchEnd = std::chrono::high_resolution_clock::now();
+        benchmarkStats.batchingTimeMs = std::chrono::duration<float, std::milli>(batchEnd - batchStart).count();
     }
+
+    Endfield::BenchmarkManager::Instance().EndFrame();
 
     m_RenderInstances.clear();
 }

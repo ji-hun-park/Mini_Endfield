@@ -14,6 +14,7 @@ find_package(Vulkan REQUIRED)
 set(SRC_FILES
     Src/PluginAPI.cpp
     Src/VulkanBackend.cpp
+    Src/Benchmark.cpp
 )
 
 set(HEADER_FILES
@@ -21,6 +22,7 @@ set(HEADER_FILES
     Src/VulkanBackend.h
     Src/RenderGraph.h
     Src/SortKey.h
+    Src/Benchmark.h
 )
 
 # Create Shared Library (.dll on Windows, .so on Linux)
@@ -38,6 +40,6 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE EXPORT_PLUGIN)
 # Output to Unity project (Plugins folder)
 set_target_properties(${PROJECT_NAME} PROPERTIES
     PREFIX ""
-    OUTPUT_NAME "EndfieldVulkanPlugin"
+    OUTPUT_NAME "MiniEndfieldVulkanPlugin_v12"
 )
 

@@ -61,25 +61,25 @@
     <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">D:\ArrFolder\WorkSpaces\UnityWorkSpace\Mini_Endfield\NativeCore\build\Debug\</OutDir>
     <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">MiniEndfieldVulkanPlugin.dir\Debug\</IntDir>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">EndfieldVulkanPlugin</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">MiniEndfieldVulkanPlugin_v12</TargetName>
     <TargetExt Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">.dll</TargetExt>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</LinkIncremental>
     <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</GenerateManifest>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">D:\ArrFolder\WorkSpaces\UnityWorkSpace\Mini_Endfield\NativeCore\build\Release\</OutDir>
     <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">MiniEndfieldVulkanPlugin.dir\Release\</IntDir>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">EndfieldVulkanPlugin</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">MiniEndfieldVulkanPlugin_v12</TargetName>
     <TargetExt Condition="'$(Configuration)|$(Platform)'=='Release|x64'">.dll</TargetExt>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
     <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</GenerateManifest>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">D:\ArrFolder\WorkSpaces\UnityWorkSpace\Mini_Endfield\NativeCore\build\MinSizeRel\</OutDir>
     <IntDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">MiniEndfieldVulkanPlugin.dir\MinSizeRel\</IntDir>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">EndfieldVulkanPlugin</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">MiniEndfieldVulkanPlugin_v12</TargetName>
     <TargetExt Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">.dll</TargetExt>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">false</LinkIncremental>
     <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">true</GenerateManifest>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">D:\ArrFolder\WorkSpaces\UnityWorkSpace\Mini_Endfield\NativeCore\build\RelWithDebInfo\</OutDir>
     <IntDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">MiniEndfieldVulkanPlugin.dir\RelWithDebInfo\</IntDir>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">EndfieldVulkanPlugin</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">MiniEndfieldVulkanPlugin_v12</TargetName>
     <TargetExt Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">.dll</TargetExt>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">true</LinkIncremental>
     <GenerateManifest Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">true</GenerateManifest>
@@ -132,9 +132,9 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ImageHasSafeExceptionHandlers></ImageHasSafeExceptionHandlers>
-      <ImportLibrary>D:/ArrFolder/WorkSpaces/UnityWorkSpace/Mini_Endfield/NativeCore/build/Debug/EndfieldVulkanPlugin.lib</ImportLibrary>
+      <ImportLibrary>D:/ArrFolder/WorkSpaces/UnityWorkSpace/Mini_Endfield/NativeCore/build/Debug/MiniEndfieldVulkanPlugin_v12.lib</ImportLibrary>
       <LinkErrorReporting></LinkErrorReporting>
-      <ProgramDataBaseFile>D:/ArrFolder/WorkSpaces/UnityWorkSpace/Mini_Endfield/NativeCore/build/Debug/EndfieldVulkanPlugin.pdb</ProgramDataBaseFile>
+      <ProgramDataBaseFile>D:/ArrFolder/WorkSpaces/UnityWorkSpace/Mini_Endfield/NativeCore/build/Debug/MiniEndfieldVulkanPlugin_v12.pdb</ProgramDataBaseFile>
       <RandomizedBaseAddress></RandomizedBaseAddress>
       <SubSystem>Console</SubSystem>
     </Link>
@@ -190,9 +190,9 @@
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ImageHasSafeExceptionHandlers></ImageHasSafeExceptionHandlers>
-      <ImportLibrary>D:/ArrFolder/WorkSpaces/UnityWorkSpace/Mini_Endfield/NativeCore/build/Release/EndfieldVulkanPlugin.lib</ImportLibrary>
+      <ImportLibrary>D:/ArrFolder/WorkSpaces/UnityWorkSpace/Mini_Endfield/NativeCore/build/Release/MiniEndfieldVulkanPlugin_v12.lib</ImportLibrary>
       <LinkErrorReporting></LinkErrorReporting>
-      <ProgramDataBaseFile>D:/ArrFolder/WorkSpaces/UnityWorkSpace/Mini_Endfield/NativeCore/build/Release/EndfieldVulkanPlugin.pdb</ProgramDataBaseFile>
+      <ProgramDataBaseFile>D:/ArrFolder/WorkSpaces/UnityWorkSpace/Mini_Endfield/NativeCore/build/Release/MiniEndfieldVulkanPlugin_v12.pdb</ProgramDataBaseFile>
       <RandomizedBaseAddress></RandomizedBaseAddress>
       <SubSystem>Console</SubSystem>
     </Link>
@@ -248,9 +248,9 @@
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ImageHasSafeExceptionHandlers></ImageHasSafeExceptionHandlers>
-      <ImportLibrary>D:/ArrFolder/WorkSpaces/UnityWorkSpace/Mini_Endfield/NativeCore/build/MinSizeRel/EndfieldVulkanPlugin.lib</ImportLibrary>
+      <ImportLibrary>D:/ArrFolder/WorkSpaces/UnityWorkSpace/Mini_Endfield/NativeCore/build/MinSizeRel/MiniEndfieldVulkanPlugin_v12.lib</ImportLibrary>
       <LinkErrorReporting></LinkErrorReporting>
-      <ProgramDataBaseFile>D:/ArrFolder/WorkSpaces/UnityWorkSpace/Mini_Endfield/NativeCore/build/MinSizeRel/EndfieldVulkanPlugin.pdb</ProgramDataBaseFile>
+      <ProgramDataBaseFile>D:/ArrFolder/WorkSpaces/UnityWorkSpace/Mini_Endfield/NativeCore/build/MinSizeRel/MiniEndfieldVulkanPlugin_v12.pdb</ProgramDataBaseFile>
       <RandomizedBaseAddress></RandomizedBaseAddress>
       <SubSystem>Console</SubSystem>
     </Link>
@@ -305,9 +305,9 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <IgnoreSpecificDefaultLibraries>%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ImageHasSafeExceptionHandlers></ImageHasSafeExceptionHandlers>
-      <ImportLibrary>D:/ArrFolder/WorkSpaces/UnityWorkSpace/Mini_Endfield/NativeCore/build/RelWithDebInfo/EndfieldVulkanPlugin.lib</ImportLibrary>
+      <ImportLibrary>D:/ArrFolder/WorkSpaces/UnityWorkSpace/Mini_Endfield/NativeCore/build/RelWithDebInfo/MiniEndfieldVulkanPlugin_v12.lib</ImportLibrary>
       <LinkErrorReporting></LinkErrorReporting>
-      <ProgramDataBaseFile>D:/ArrFolder/WorkSpaces/UnityWorkSpace/Mini_Endfield/NativeCore/build/RelWithDebInfo/EndfieldVulkanPlugin.pdb</ProgramDataBaseFile>
+      <ProgramDataBaseFile>D:/ArrFolder/WorkSpaces/UnityWorkSpace/Mini_Endfield/NativeCore/build/RelWithDebInfo/MiniEndfieldVulkanPlugin_v12.pdb</ProgramDataBaseFile>
       <RandomizedBaseAddress></RandomizedBaseAddress>
       <SubSystem>Console</SubSystem>
     </Link>
@@ -375,10 +375,12 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
   <ItemGroup>
     <ClCompile Include="D:\ArrFolder\WorkSpaces\UnityWorkSpace\Mini_Endfield\NativeCore\Src\PluginAPI.cpp" />
     <ClCompile Include="D:\ArrFolder\WorkSpaces\UnityWorkSpace\Mini_Endfield\NativeCore\Src\VulkanBackend.cpp" />
+    <ClCompile Include="D:\ArrFolder\WorkSpaces\UnityWorkSpace\Mini_Endfield\NativeCore\Src\Benchmark.cpp" />
     <ClInclude Include="D:\ArrFolder\WorkSpaces\UnityWorkSpace\Mini_Endfield\NativeCore\Src\PluginAPI.h" />
     <ClInclude Include="D:\ArrFolder\WorkSpaces\UnityWorkSpace\Mini_Endfield\NativeCore\Src\VulkanBackend.h" />
     <ClInclude Include="D:\ArrFolder\WorkSpaces\UnityWorkSpace\Mini_Endfield\NativeCore\Src\RenderGraph.h" />
     <ClInclude Include="D:\ArrFolder\WorkSpaces\UnityWorkSpace\Mini_Endfield\NativeCore\Src\SortKey.h" />
+    <ClInclude Include="D:\ArrFolder\WorkSpaces\UnityWorkSpace\Mini_Endfield\NativeCore\Src\Benchmark.h" />
   </ItemGroup>
   <ItemGroup />
   <ItemGroup>

@@ -44,13 +44,22 @@ namespace Endfield.ECS.Systems
         {
         }
 
+        public static int LastTotalCandidateCount = 0;
+        public static int LastVisibleInstanceCount = 0;
+        public static int LastCulledCount = 0;
+        public static float LastCullingRatio = 0f;
+        public static float LastPackAndSubmitTimeMs = 0f;
+
         protected override void OnUpdate()
         {
             int entityCount = m_RenderQuery.CalculateEntityCount();
+            LastTotalCandidateCount = entityCount;
             if (entityCount == 0) return;
 
             Camera cam = Camera.main;
             if (cam == null) return;
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
 
             VulkanPluginWrapper.SetResolution(cam.pixelWidth, cam.pixelHeight);
 
@@ -74,6 +83,9 @@ namespace Endfield.ECS.Systems
             Dependency.Complete();
 
             int visibleCount = counter[0];
+            LastVisibleInstanceCount = visibleCount;
+            LastCulledCount = entityCount - visibleCount;
+            LastCullingRatio = entityCount > 0 ? ((float)LastCulledCount / entityCount) * 100.0f : 0f;
 
             if (visibleCount > 0)
             {
@@ -86,6 +98,9 @@ namespace Endfield.ECS.Systems
 
             instanceData.Dispose();
             counter.Dispose();
+
+            sw.Stop();
+            LastPackAndSubmitTimeMs = (float)sw.Elapsed.TotalMilliseconds;
         }
 
         [BurstCompile]
