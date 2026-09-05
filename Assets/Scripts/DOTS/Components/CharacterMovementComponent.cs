@@ -1,4 +1,4 @@
-﻿using Unity.Entities;
+using Unity.Entities;
 using Unity.Mathematics;
 
 namespace Endfield.ECS
@@ -9,11 +9,9 @@ namespace Endfield.ECS
     /// </summary>
     public struct CharacterMovementComponent : IComponentData
     {
-        public float3 Velocity;
-        public float MoveSpeed;
-        public float3 BoundsMin;
-        public float3 BoundsMax;
-        public float DirectionChangeTimer;
-        public uint RandomSeed;
+        public float BaseY;
+        public float PhaseOffset;
+        public float Amplitude;
+        public float AnimationSpeed;
     }
 }

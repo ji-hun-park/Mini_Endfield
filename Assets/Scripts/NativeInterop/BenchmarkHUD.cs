@@ -217,7 +217,7 @@ namespace Endfield.NativeInterop
             InitializeStyles();
 
             float panelWidth = 380f;
-            float panelHeight = m_Manager.IsBenchmarkRunning ? 570f : 520f;
+            float panelHeight = m_Manager.IsBenchmarkRunning ? 610f : 560f;
             Rect panelRect = new Rect(15, 15, panelWidth, panelHeight);
 
             GUI.Box(panelRect, GUIContent.none, m_BoxStyle);
@@ -331,9 +331,13 @@ namespace Endfield.NativeInterop
             }
             else
             {
-                if (GUILayout.Button("RUN AUTOMATED BENCHMARK SUITE", m_ButtonStyle, GUILayout.Height(28)))
+                if (GUILayout.Button("RUN AUTOMATED BENCHMARK SUITE", m_ButtonStyle, GUILayout.Height(26)))
                 {
                     m_Manager.StartAutomatedBenchmark();
+                }
+                if (GUILayout.Button("RUN MULTI-TIER SUITE (1K ~ 500K)", m_ButtonStyle, GUILayout.Height(26)))
+                {
+                    m_Manager.StartMultiTierBenchmark();
                 }
             }
 

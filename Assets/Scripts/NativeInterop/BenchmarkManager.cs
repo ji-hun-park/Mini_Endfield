@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using Unity.Entities;
 using Endfield.Rendering;
+using Endfield.ECS;
 using Endfield.ECS.Systems;
 
 namespace Endfield.NativeInterop
@@ -17,6 +18,8 @@ namespace Endfield.NativeInterop
         [SerializeField] private bool m_EnableOcclusionCulling = true;
 
         [Header("Automated Benchmark Configuration")]
+        [SerializeField] private int[] m_BenchmarkTiers = new int[] { 1000, 10000, 50000, 100000, 500000 };
+        [SerializeField] private float m_BenchmarkSpreadRadius = 300.0f;
         [SerializeField] private int m_WarmupFrames = 15;
         [SerializeField] private int m_SampleFrames = 45;
 
@@ -141,7 +144,22 @@ namespace Endfield.NativeInterop
             OnePercentLowFps = sortedSamples[onePercentIndex];
         }
 
-        public void SpawnExtraCharacters(int count)
+        public void ClearAllCharacters()
+        {
+            var world = World.DefaultGameObjectInjectionWorld;
+            if (world == null) return;
+            var em = world.EntityManager;
+
+            var childQuery = em.CreateEntityQuery(ComponentType.ReadOnly<RenderMeshComponent>());
+            em.DestroyEntity(childQuery);
+            childQuery.Dispose();
+
+            var rootQuery = em.CreateEntityQuery(ComponentType.ReadOnly<CharacterMovementComponent>());
+            em.DestroyEntity(rootQuery);
+            rootQuery.Dispose();
+        }
+
+        public void SpawnExtraCharacters(int count, float spreadRadius = -1f)
         {
             var world = World.DefaultGameObjectInjectionWorld;
             if (world == null)
@@ -160,18 +178,68 @@ namespace Endfield.NativeInterop
                 return;
             }
 
+            float spread = spreadRadius > 0f ? spreadRadius : m_BenchmarkSpreadRadius;
+
             CharacterSpawner.SpawnCharactersInternal(
                 world.EntityManager,
                 prefab,
                 count,
-                new Vector2(250f, 250f),
+                new Vector2(spread, spread),
                 false,
                 0f,
                 3f,
                 8f,
-                new Vector2(280f, 280f),
+                new Vector2(spread * 1.1f, spread * 1.1f),
                 Vector3.zero
             );
+        }
+
+        public void StartMultiTierBenchmark()
+        {
+            if (IsBenchmarkRunning) return;
+            StartCoroutine(RunMultiTierBenchmarkRoutine());
+        }
+
+        private IEnumerator RunMultiTierBenchmarkRoutine()
+        {
+            IsBenchmarkRunning = true;
+            BenchmarkStatusMessage = "Starting Multi-Tier Benchmark Suite...";
+            List<BenchmarkTierResult> results = new List<BenchmarkTierResult>();
+
+            EnableFrustumCulling = true;
+
+            for (int t = 0; t < m_BenchmarkTiers.Length; t++)
+            {
+                int count = m_BenchmarkTiers[t];
+                string tierName = count >= 1000 ? $"{count / 1000}K Tier" : $"{count} Tier";
+                BenchmarkStatusMessage = $"Running Tier {tierName} ({count:N0} characters @ spread {m_BenchmarkSpreadRadius:F0}m)...";
+                BenchmarkProgress = (float)t / m_BenchmarkTiers.Length;
+
+                // 1. Clear previous characters
+                ClearAllCharacters();
+                yield return null;
+
+                // 2. Spawn instances for this tier
+                SpawnExtraCharacters(count, m_BenchmarkSpreadRadius);
+                yield return null;
+
+                // 3. Sample
+                yield return StartCoroutine(SampleBenchmarkTier(tierName, results));
+            }
+
+            // Restore initial 10K characters with default 5000m spread
+            ClearAllCharacters();
+            yield return null;
+            SpawnExtraCharacters(10000, 5000f);
+
+            // Generate and save report
+            BenchmarkStatusMessage = "Compiling Multi-Tier Markdown Report...";
+            string reportMarkdown = BenchmarkReportGenerator.GenerateMarkdownReport("Multi-Tier Density Benchmark (Spread 300m)", results);
+            string savedPath = BenchmarkReportGenerator.SaveReportToFile(reportMarkdown);
+
+            BenchmarkStatusMessage = "Multi-Tier Benchmark Completed!";
+            IsBenchmarkRunning = false;
+            OnBenchmarkCompleted?.Invoke(savedPath);
         }
 
         public void StartAutomatedBenchmark()

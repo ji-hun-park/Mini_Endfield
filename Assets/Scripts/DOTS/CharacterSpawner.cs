@@ -26,7 +26,7 @@ namespace Endfield.ECS.Systems
         public int spawnCount = 10000;
 
         [Tooltip("Size of the area in which characters spawn (X and Z)")]
-        public Vector2 spawnAreaSize = new Vector2(250f, 250f);
+        public Vector2 spawnAreaSize = new Vector2(5000f, 5000f);
 
         [Tooltip("If true, spawns characters in a uniform grid; if false, randomly scatters them")]
         public bool spawnInGrid = false;
@@ -234,12 +234,10 @@ namespace Endfield.ECS.Systems
                 entityManager.SetComponentData(rootEntities[i], LocalTransform.FromPositionRotationScale(spawnPos, rot, 1f));
                 entityManager.SetComponentData(rootEntities[i], new CharacterMovementComponent
                 {
-                    Velocity = vel,
-                    MoveSpeed = speed,
-                    BoundsMin = boundsMin,
-                    BoundsMax = boundsMax,
-                    DirectionChangeTimer = UnityEngine.Random.Range(1f, 4f),
-                    RandomSeed = (uint)(i + 1) * 2654435761u
+                    BaseY = spawnPos.y,
+                    PhaseOffset = (float)i * 0.1f,
+                    Amplitude = 2.0f,
+                    AnimationSpeed = 1.0f
                 });
             }
 

@@ -171,9 +171,14 @@ namespace Endfield.EditorTools
             else
             {
                 GUI.backgroundColor = new Color(0.4f, 0.9f, 0.4f);
-                if (GUILayout.Button("RUN AUTOMATED BENCHMARK SUITE", GUILayout.Height(32)))
+                if (GUILayout.Button("RUN AUTOMATED BENCHMARK SUITE", GUILayout.Height(30)))
                 {
                     manager.StartAutomatedBenchmark();
+                }
+                GUI.backgroundColor = new Color(0.3f, 0.7f, 1.0f);
+                if (GUILayout.Button("RUN MULTI-TIER SUITE (1K ~ 500K)", GUILayout.Height(30)))
+                {
+                    manager.StartMultiTierBenchmark();
                 }
                 GUI.backgroundColor = Color.white;
             }
