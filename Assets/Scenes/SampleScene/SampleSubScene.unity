@@ -165,12 +165,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Endfield.ECS.Systems.CharacterSpawner
   characterPrefab: {fileID: 919132149155446097, guid: bc5cc40ab4d8e864a8b6b7220cf99eca, type: 3}
   spawnCount: 10000
-  spawnAreaSize: {x: 250, y: 250}
+  spawnAreaSize: {x: 5000, y: 5000}
   spawnInGrid: 0
   baseHeight: 0
   moveSpeedMin: 3
   moveSpeedMax: 8
-  movementBoundsSize: {x: 280, y: 280}
+  movementBoundsSize: {x: 100, y: 100}
   autoSpawnOnStart: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:

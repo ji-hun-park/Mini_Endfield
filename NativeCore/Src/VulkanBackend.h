@@ -5,6 +5,10 @@
 #include <mutex>
 #include <algorithm>
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
 #if defined(_WIN32)
 #define VK_USE_PLATFORM_WIN32_KHR
 #endif
@@ -38,6 +42,7 @@ public:
 
     void SetupRenderGraph();
     void SubmitBatch(const void* batchData, int instanceCount);
+    void SetCullingOptions(bool enableFrustum, bool enableOcclusion);
 
 private:
     void InitializeVulkan(IUnityInterfaces* unityInterfaces);
@@ -60,11 +65,29 @@ private:
 
     // Render Pass & Pipeline
     VkRenderPass m_RenderPass = VK_NULL_HANDLE;
+    VkRenderPass m_NativeRenderPass = VK_NULL_HANDLE;
     VkPipeline m_GraphicsPipeline = VK_NULL_HANDLE;
     VkPipelineLayout m_PipelineLayout = VK_NULL_HANDLE;
-    void CreateRenderPass(VkFormat format);
+    VkRenderPass CreateRenderPass(VkFormat colorFormat, VkFormat depthFormat);
     void CreateGraphicsPipeline();
     VkShaderModule CreateShaderModule(const std::vector<char>& code);
+
+    // C++ Native Frustum & Occlusion Culling
+    bool m_EnableNativeFrustumCulling = true;
+    bool m_EnableNativeOcclusionCulling = true;
+    static bool IsInsideFrustum(const float* mvp, float radius = 3.5f);
+    void CullFrustumInstances();
+
+    // Software Occlusion Culling (Pillar 2: 128x64 Low-Res Depth Buffer / 8-Tile Lock-Free)
+    static constexpr int kOccWidth = 128;
+    static constexpr int kOccHeight = 64;
+    static constexpr int kOccTileCount = 8;
+    alignas(64) float m_SoftwareDepthBuffer[kOccHeight][kOccWidth];
+
+    void ClearSoftwareDepthBuffer();
+    bool IsOccluded(const float* mvp, float radius) const;
+    void RasterizeOccluder(const float* mvp, float radius);
+    void CullOcclusionInstances();
 
     // Mesh Data
     struct Vertex {

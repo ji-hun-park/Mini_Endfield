@@ -52,7 +52,11 @@ void BenchmarkManager::RunHeadlessBenchmark(int instanceCount, int iterations, N
 
     double totalSortMs = 0.0;
     double totalBatchMs = 0.0;
+    double totalFrustumMs = 0.0;
+    double totalOccMs = 0.0;
     double totalFrameMs = 0.0;
+    uint32_t lastCulledFrustum = 0;
+    uint32_t lastCulledOcc = 0;
     uint32_t simulatedVisible = 0;
 
     // Fixed seed for deterministic benchmark comparison
@@ -73,7 +77,27 @@ void BenchmarkManager::RunHeadlessBenchmark(int instanceCount, int iterations, N
             instances[i].sortKey = sortKey;
         }
 
-        // 2. Sort benchmark (Endfield 64-bit SortKey quicksort)
+        // 2. Frustum Culling Simulation
+        if (m_EnableFrustum) {
+            auto fStart = std::chrono::high_resolution_clock::now();
+            size_t keepCount = instances.size() * 3 / 10; // ~70% culled by frustum
+            lastCulledFrustum = static_cast<uint32_t>(instances.size() - keepCount);
+            instances.resize(keepCount);
+            auto fEnd = std::chrono::high_resolution_clock::now();
+            totalFrustumMs += std::chrono::duration<double, std::milli>(fEnd - fStart).count();
+        }
+
+        // 3. Occlusion Culling Simulation
+        if (m_EnableOcclusion) {
+            auto oStart = std::chrono::high_resolution_clock::now();
+            size_t keepCount = instances.size() * 4 / 10; // ~60% occluded behind front crowd
+            lastCulledOcc = static_cast<uint32_t>(instances.size() - keepCount);
+            instances.resize(keepCount);
+            auto oEnd = std::chrono::high_resolution_clock::now();
+            totalOccMs += std::chrono::duration<double, std::milli>(oEnd - oStart).count();
+        }
+
+        // 4. Sort benchmark (Endfield 64-bit SortKey quicksort)
         auto sortStart = std::chrono::high_resolution_clock::now();
         std::sort(instances.begin(), instances.end(), [](const BenchmarkInstanceData& a, const BenchmarkInstanceData& b) {
             return a.sortKey < b.sortKey;
@@ -81,7 +105,7 @@ void BenchmarkManager::RunHeadlessBenchmark(int instanceCount, int iterations, N
         auto sortEnd = std::chrono::high_resolution_clock::now();
         totalSortMs += std::chrono::duration<double, std::milli>(sortEnd - sortStart).count();
 
-        // 3. Batch build benchmark (redundant bind elimination & 0x7F7F7F7F check)
+        // 5. Batch build benchmark (redundant bind elimination & 0x7F7F7F7F check)
         auto batchStart = std::chrono::high_resolution_clock::now();
         uint32_t lastMeshId = 0xFFFFFFFF;
         uint32_t drawCount = 0;
@@ -105,6 +129,10 @@ void BenchmarkManager::RunHeadlessBenchmark(int instanceCount, int iterations, N
     }
 
     outAverages->visibleInstances = simulatedVisible;
+    outAverages->culledFrustum = lastCulledFrustum;
+    outAverages->culledOcclusion = lastCulledOcc;
+    outAverages->frustumCullingTimeMs = static_cast<float>(totalFrustumMs / iterations);
+    outAverages->occlusionCullingTimeMs = static_cast<float>(totalOccMs / iterations);
     outAverages->sortingTimeMs = static_cast<float>(totalSortMs / iterations);
     outAverages->batchingTimeMs = static_cast<float>(totalBatchMs / iterations);
     outAverages->totalNativeFrameTimeMs = static_cast<float>(totalFrameMs / iterations);

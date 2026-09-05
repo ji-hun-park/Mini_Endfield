@@ -4,7 +4,6 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Transforms;
-using Unity.Burst.Intrinsics;
 using Unity.Mathematics;
 using System;
 using System.IO;
@@ -19,12 +18,7 @@ namespace Endfield.ECS.Systems
     public partial class RenderSubmissionSystem : SystemBase
     {
         private EntityQuery m_RenderQuery;
-
-        // Persistent Zero-Allocation Buffers
-        private NativeArray<InstanceData> m_PersistentInstances;
-        private NativeArray<int> m_ChunkVisibleCounts;
-        private NativeArray<int> m_ChunkOffsets;
-        private NativeArray<int> m_TotalVisibleCounter;
+        private NativeList<InstanceData> m_PersistentInstances;
 
         public static int LastTotalCandidateCount = 0;
         public static int LastVisibleInstanceCount = 0;
@@ -40,7 +34,7 @@ namespace Endfield.ECS.Systems
                 ComponentType.ReadOnly<VisibilityComponent>()
             );
 
-            m_TotalVisibleCounter = new NativeArray<int>(1, Allocator.Persistent);
+            m_PersistentInstances = new NativeList<InstanceData>(131072, Allocator.Persistent);
 
             VulkanPluginWrapper.InitializeWithDebug();
 
@@ -56,10 +50,10 @@ namespace Endfield.ECS.Systems
 
         protected override void OnDestroy()
         {
-            if (m_PersistentInstances.IsCreated) m_PersistentInstances.Dispose();
-            if (m_ChunkVisibleCounts.IsCreated) m_ChunkVisibleCounts.Dispose();
-            if (m_ChunkOffsets.IsCreated) m_ChunkOffsets.Dispose();
-            if (m_TotalVisibleCounter.IsCreated) m_TotalVisibleCounter.Dispose();
+            if (m_PersistentInstances.IsCreated)
+            {
+                m_PersistentInstances.Dispose();
+            }
         }
 
         protected override void OnUpdate()
@@ -67,9 +61,6 @@ namespace Endfield.ECS.Systems
             int entityCount = m_RenderQuery.CalculateEntityCount();
             LastTotalCandidateCount = entityCount;
             if (entityCount == 0) return;
-
-            int chunkCount = m_RenderQuery.CalculateChunkCount();
-            if (chunkCount == 0) return;
 
             Camera cam = Camera.main;
             if (cam == null) return;
@@ -80,55 +71,23 @@ namespace Endfield.ECS.Systems
 
             float4x4 vp = GL.GetGPUProjectionMatrix(cam.projectionMatrix, false) * cam.worldToCameraMatrix;
 
-            // Zero-allocation persistent buffer resizing
-            if (!m_PersistentInstances.IsCreated || m_PersistentInstances.Length < entityCount)
+            // Zero-allocation parallel list capacity guarantee
+            if (m_PersistentInstances.Capacity < entityCount)
             {
-                if (m_PersistentInstances.IsCreated) m_PersistentInstances.Dispose();
-                int newCap = math.max(entityCount, 65536);
-                m_PersistentInstances = new NativeArray<InstanceData>(newCap, Allocator.Persistent);
+                m_PersistentInstances.SetCapacity(math.max(entityCount, 65536));
             }
+            m_PersistentInstances.Clear();
 
-            if (!m_ChunkVisibleCounts.IsCreated || m_ChunkVisibleCounts.Length < chunkCount)
+            var packJob = new PackInstancesJob
             {
-                if (m_ChunkVisibleCounts.IsCreated) m_ChunkVisibleCounts.Dispose();
-                if (m_ChunkOffsets.IsCreated) m_ChunkOffsets.Dispose();
-                int newCap = math.max(chunkCount, 1024);
-                m_ChunkVisibleCounts = new NativeArray<int>(newCap, Allocator.Persistent);
-                m_ChunkOffsets = new NativeArray<int>(newCap, Allocator.Persistent);
-            }
-
-            // Step 1: Parallel visible entity count per chunk
-            var countJob = new CountChunkVisibleJob
-            {
-                VisibilityType = GetComponentTypeHandle<VisibilityComponent>(true),
-                ChunkCounts = m_ChunkVisibleCounts
-            };
-            Dependency = countJob.ScheduleParallel(m_RenderQuery, Dependency);
-
-            // Step 2: Sequential prefix sum of offsets (~0.001 ms in Burst)
-            var prefixJob = new PrefixSumJob
-            {
-                ChunkCounts = m_ChunkVisibleCounts,
-                ChunkOffsets = m_ChunkOffsets,
-                TotalVisibleCount = m_TotalVisibleCounter,
-                NumChunks = chunkCount
-            };
-            Dependency = prefixJob.Schedule(Dependency);
-
-            // Step 3: Fully parallelized instance packing with AVX2 SIMD matrix multiplications
-            var packJob = new PackInstancesParallelJob
-            {
-                LocalToWorldType = GetComponentTypeHandle<LocalToWorld>(true),
-                RenderMeshType = GetComponentTypeHandle<RenderMeshComponent>(true),
-                VisibilityType = GetComponentTypeHandle<VisibilityComponent>(true),
-                ChunkOffsets = m_ChunkOffsets,
                 VPMatrix = vp,
-                Instances = m_PersistentInstances
+                OutputList = m_PersistentInstances.AsParallelWriter()
             };
+
             Dependency = packJob.ScheduleParallel(m_RenderQuery, Dependency);
             Dependency.Complete();
 
-            int visibleCount = m_TotalVisibleCounter[0];
+            int visibleCount = m_PersistentInstances.Length;
             LastVisibleInstanceCount = visibleCount;
             LastCulledCount = entityCount - visibleCount;
             LastCullingRatio = entityCount > 0 ? ((float)LastCulledCount / entityCount) * 100.0f : 0f;
@@ -137,7 +96,7 @@ namespace Endfield.ECS.Systems
             {
                 unsafe
                 {
-                    IntPtr ptr = (IntPtr)NativeArrayUnsafeUtility.GetUnsafePtr(m_PersistentInstances);
+                    IntPtr ptr = (IntPtr)m_PersistentInstances.GetUnsafePtr();
                     VulkanPluginWrapper.SubmitRenderBatch(ptr, visibleCount);
                 }
             }
@@ -147,78 +106,24 @@ namespace Endfield.ECS.Systems
         }
 
         [BurstCompile]
-        private struct CountChunkVisibleJob : IJobChunk
+        private partial struct PackInstancesJob : IJobEntity
         {
-            [ReadOnly] public ComponentTypeHandle<VisibilityComponent> VisibilityType;
-            [NativeDisableParallelForRestriction] public NativeArray<int> ChunkCounts;
+            [ReadOnly] public float4x4 VPMatrix;
+            public NativeList<InstanceData>.ParallelWriter OutputList;
 
-            public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+            public void Execute(in LocalToWorld transform, in RenderMeshComponent renderMesh, in VisibilityComponent visibility)
             {
-                var visibilities = chunk.GetNativeArray(ref VisibilityType);
-                int count = chunk.Count;
-                int visible = 0;
-                for (int i = 0; i < count; i++)
+                if (visibility.IsVisible == 1)
                 {
-                    if (visibilities[i].IsVisible == 1)
+                    OutputList.AddNoResize(new InstanceData
                     {
-                        visible++;
-                    }
-                }
-                ChunkCounts[unfilteredChunkIndex] = visible;
-            }
-        }
 
-        [BurstCompile]
-        private struct PrefixSumJob : IJob
-        {
-            [ReadOnly] public NativeArray<int> ChunkCounts;
-            public NativeArray<int> ChunkOffsets;
-            public NativeArray<int> TotalVisibleCount;
-            public int NumChunks;
 
-            public void Execute()
-            {
-                int sum = 0;
-                for (int i = 0; i < NumChunks; i++)
-                {
-                    ChunkOffsets[i] = sum;
-                    sum += ChunkCounts[i];
-                }
-                TotalVisibleCount[0] = sum;
-            }
-        }
 
-        [BurstCompile]
-        private struct PackInstancesParallelJob : IJobChunk
-        {
-            [ReadOnly] public ComponentTypeHandle<LocalToWorld> LocalToWorldType;
-            [ReadOnly] public ComponentTypeHandle<RenderMeshComponent> RenderMeshType;
-            [ReadOnly] public ComponentTypeHandle<VisibilityComponent> VisibilityType;
-            [ReadOnly] public NativeArray<int> ChunkOffsets;
-            public float4x4 VPMatrix;
 
-            [NativeDisableParallelForRestriction]
-            public NativeArray<InstanceData> Instances;
-
-            public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
-            {
-                var matrices = chunk.GetNativeArray(ref LocalToWorldType);
-                var renderMeshes = chunk.GetNativeArray(ref RenderMeshType);
-                var visibilities = chunk.GetNativeArray(ref VisibilityType);
-
-                int count = chunk.Count;
-                int writeIdx = ChunkOffsets[unfilteredChunkIndex];
-
-                for (int i = 0; i < count; i++)
-                {
-                    if (visibilities[i].IsVisible == 1)
-                    {
-                        Instances[writeIdx++] = new InstanceData
-                        {
-                            MvpMatrix = math.mul(VPMatrix, matrices[i].Value),
-                            SortKey = renderMeshes[i].SortKey
-                        };
-                    }
+                        MvpMatrix = math.mul(VPMatrix, transform.Value),
+                        SortKey = renderMesh.SortKey
+                    });
                 }
             }
         }

@@ -14,6 +14,7 @@ namespace Endfield.NativeInterop
 
         [Header("Culling Settings")]
         [SerializeField] private bool m_EnableFrustumCulling = true;
+        [SerializeField] private bool m_EnableOcclusionCulling = true;
 
         [Header("Automated Benchmark Configuration")]
         [SerializeField] private int m_WarmupFrames = 15;
@@ -43,7 +44,17 @@ namespace Endfield.NativeInterop
             {
                 m_EnableFrustumCulling = value;
                 SoftwareCullingSystem.EnableCulling = value;
-                VulkanPluginWrapper.SetBenchmarkCullingOptions(value, false);
+                VulkanPluginWrapper.SetBenchmarkCullingOptions(value, m_EnableOcclusionCulling);
+            }
+        }
+
+        public bool EnableOcclusionCulling
+        {
+            get => m_EnableOcclusionCulling;
+            set
+            {
+                m_EnableOcclusionCulling = value;
+                VulkanPluginWrapper.SetBenchmarkCullingOptions(m_EnableFrustumCulling, value);
             }
         }
 
@@ -74,6 +85,7 @@ namespace Endfield.NativeInterop
         private void Start()
         {
             EnableFrustumCulling = m_EnableFrustumCulling;
+            EnableOcclusionCulling = m_EnableOcclusionCulling;
         }
 
         private void Update()

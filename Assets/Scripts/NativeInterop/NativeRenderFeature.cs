@@ -16,7 +16,8 @@ namespace Endfield.Rendering
                 public TextureHandle depthTarget;
             }
 
-            public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData) { 
+            public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
+            {
                 UniversalCameraData cameraData = frameData.Get<UniversalCameraData>();
                 if (cameraData.cameraType != CameraType.Game && cameraData.cameraType != CameraType.SceneView)
                     return;
@@ -34,11 +35,11 @@ namespace Endfield.Rendering
                         builder.UseTexture(passData.depthTarget, AccessFlags.ReadWrite);
 
                     builder.AllowPassCulling(false); builder.AllowGlobalStateModification(true);
-                    
+
                     builder.SetRenderFunc((PassData data, UnsafeGraphContext context) =>
                     {
                         var cmd = CommandBufferHelpers.GetNativeCommandBuffer(context.cmd);
-                        
+
                         if (data.colorTarget.IsValid())
                         {
                             if (data.depthTarget.IsValid())
@@ -56,7 +57,7 @@ namespace Endfield.Rendering
                 }
             }
 
-            #pragma warning disable CS0115
+#pragma warning disable CS0115
             public virtual void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
             {
                 if (renderingData.cameraData.cameraType != CameraType.Game && renderingData.cameraData.cameraType != CameraType.SceneView)
@@ -71,7 +72,7 @@ namespace Endfield.Rendering
                 context.ExecuteCommandBuffer(cmd);
                 CommandBufferPool.Release(cmd);
             }
-            #pragma warning restore CS0115
+#pragma warning restore CS0115
         }
 
         NativeRenderPass m_ScriptablePass;
@@ -79,12 +80,12 @@ namespace Endfield.Rendering
         public override void Create()
         {
             m_ScriptablePass = new NativeRenderPass();
-            m_ScriptablePass.renderPassEvent = RenderPassEvent.AfterRenderingPostProcessing;
+            m_ScriptablePass.renderPassEvent = RenderPassEvent.AfterRenderingSkybox;
         }
 
         public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
         {
-            renderer.EnqueuePass(m_ScriptablePass); 
+            renderer.EnqueuePass(m_ScriptablePass);
         }
     }
 }

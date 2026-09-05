@@ -112,6 +112,10 @@ extern "C" {
     PLUGIN_API void SetBenchmarkCullingOptions(bool enableFrustum, bool enableOcclusion)
     {
         Endfield::BenchmarkManager::Instance().SetCullingOptions(enableFrustum, enableOcclusion);
+        if (g_VulkanBackend)
+        {
+            g_VulkanBackend->SetCullingOptions(enableFrustum, enableOcclusion);
+        }
     }
 
     PLUGIN_API void RunNativeHeadlessBenchmark(int instanceCount, int iterations, NativeBenchmarkStats* outAverages)

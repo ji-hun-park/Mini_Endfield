@@ -1,4 +1,11 @@
 {
     "cmake.sourceDirectory": "D:/ArrFolder/WorkSpaces/UnityWorkSpace/Mini_Endfield/NativeCore",
-    "dotnet.preferCSharpExtension": true
+    "dotnet.preferCSharpExtension": true,
+    "files.watcherExclude": {
+        "**/.git/**": true,
+        "**/NativeCore/build/**": true,
+        "**/Library/**": true,
+        "**/Temp/**": true,
+        "**/obj/**": true
+    }
 }

@@ -47,7 +47,16 @@ namespace Endfield.NativeInterop
             {
                 ToggleHUD();
             }
+
+#if ENABLE_INPUT_SYSTEM
+            var keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.oKey.wasPressedThisFrame)
+            {
+                m_Manager.EnableOcclusionCulling = !m_Manager.EnableOcclusionCulling;
+            }
+#endif
         }
+
 
         private bool WasToggleKeyPressed()
         {
@@ -208,7 +217,7 @@ namespace Endfield.NativeInterop
             InitializeStyles();
 
             float panelWidth = 380f;
-            float panelHeight = m_Manager.IsBenchmarkRunning ? 520f : 470f;
+            float panelHeight = m_Manager.IsBenchmarkRunning ? 570f : 520f;
             Rect panelRect = new Rect(15, 15, panelWidth, panelHeight);
 
             GUI.Box(panelRect, GUIContent.none, m_BoxStyle);
@@ -260,6 +269,8 @@ namespace Endfield.NativeInterop
             GUILayout.Label("PIPELINE STAGE BREAKDOWN", m_HeaderStyle);
             DrawTimingRow("DOTS Frustum Cull", $"{SoftwareCullingSystem.LastCullingTimeMs:F3} ms");
             DrawTimingRow("DOTS Instance Pack", $"{RenderSubmissionSystem.LastPackAndSubmitTimeMs:F3} ms");
+            DrawTimingRow("Native Frustum Cull", $"{native.frustumCullingTimeMs:F3} ms (Culled: {native.culledFrustum:N0})");
+            DrawTimingRow("Native Occlusion Cull", $"{native.occlusionCullingTimeMs:F3} ms (Culled: {native.culledOcclusion:N0})");
             DrawTimingRow("Native 64-bit Sort", $"{native.sortingTimeMs:F3} ms");
             DrawTimingRow("Native Batch & Draw", $"{native.batchingTimeMs:F3} ms");
 
@@ -277,12 +288,20 @@ namespace Endfield.NativeInterop
             // 4. Interactive Controls
             GUILayout.Label("INTERACTIVE CONTROLS", m_HeaderStyle);
 
-            // Culling Toggle
-            bool cullToggle = GUILayout.Toggle(m_Manager.EnableFrustumCulling, " Enable Frustum Culling");
+            // Culling Toggles
+            GUILayout.BeginHorizontal();
+            bool cullToggle = GUILayout.Toggle(m_Manager.EnableFrustumCulling, " Frustum Cull");
             if (cullToggle != m_Manager.EnableFrustumCulling)
             {
                 m_Manager.EnableFrustumCulling = cullToggle;
             }
+
+            bool occToggle = GUILayout.Toggle(m_Manager.EnableOcclusionCulling, " Occlusion Cull [O]");
+            if (occToggle != m_Manager.EnableOcclusionCulling)
+            {
+                m_Manager.EnableOcclusionCulling = occToggle;
+            }
+            GUILayout.EndHorizontal();
 
             // Quick Spawner
             GUILayout.BeginHorizontal();

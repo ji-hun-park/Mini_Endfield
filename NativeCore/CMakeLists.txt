@@ -40,6 +40,6 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE EXPORT_PLUGIN)
 # Output to Unity project (Plugins folder)
 set_target_properties(${PROJECT_NAME} PROPERTIES
     PREFIX ""
-    OUTPUT_NAME "MiniEndfieldVulkanPlugin_v13"
+    OUTPUT_NAME "MiniEndfieldVulkanPlugin_v18"
 )
 

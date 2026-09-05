@@ -273,6 +273,73 @@ namespace Endfield.ECS.Systems
         }
 
         /// <summary>
+        /// Validates whether a submesh is a genuine visual surface or a duplicate/outline/shadow pass.
+        /// Filters out anime inverted-hull outline duplicates, combined sum-of-mesh submeshes, and eyeshadow planes.
+        /// </summary>
+        public static bool IsValidRenderSubmesh(Renderer renderer, Mesh mesh, int subIdx)
+        {
+            if (renderer == null || mesh == null) return false;
+
+            // 1. Skip if object name suggests shadow/eyeshadow/collider/outline
+            string goName = renderer.gameObject.name.ToLower();
+            if (goName.Contains("eyeshadow") || goName.Contains("shadow") || goName.Contains("outline") || goName.Contains("collider"))
+            {
+                return false;
+            }
+
+            // 2. Check Materials: a Renderer only draws submeshes mapped to its sharedMaterials
+            Material[] mats = renderer.sharedMaterials;
+            if (mats != null && mats.Length > 0)
+            {
+                if (subIdx >= mats.Length)
+                {
+                    return false; // Extra submesh beyond materials (e.g. combined mesh or unused LOD)
+                }
+
+                Material mat = mats[subIdx];
+                if (mat != null)
+                {
+                    string matName = mat.name.ToLower();
+                    if (matName.Contains("outline") || matName.Contains("shadow") || matName.Contains("eyeshadow"))
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            // 3. Prevent duplicate submeshes on the same mesh
+            if (mesh.subMeshCount > 1)
+            {
+                uint currentIndices = mesh.GetIndexCount(subIdx);
+
+                // Duplicate index count as an earlier submesh (e.g. inverted hull outline mesh)
+                for (int prev = 0; prev < subIdx; prev++)
+                {
+                    if (mesh.GetIndexCount(prev) == currentIndices)
+                    {
+                        return false;
+                    }
+                }
+
+                // Sum of all previous submeshes (e.g. combined full mesh)
+                if (subIdx > 0)
+                {
+                    uint prevSum = 0;
+                    for (int prev = 0; prev < subIdx; prev++)
+                    {
+                        prevSum += mesh.GetIndexCount(prev);
+                    }
+                    if (currentIndices == prevSum)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
         /// Collects all submeshes from the FBX, computes their relative transforms, and uploads them to Vulkan once.
         /// (Called at runtime, never during baking).
         /// </summary>
@@ -297,9 +364,15 @@ namespace Endfield.ECS.Systems
                 Quaternion relRot = Quaternion.Inverse(root.rotation) * t.rotation;
                 float relScale = root.lossyScale.x != 0 ? t.lossyScale.x / root.lossyScale.x : 1f;
 
+                Renderer renderer = mf.GetComponent<Renderer>();
                 int subCount = mesh.subMeshCount;
                 for (int subIdx = 0; subIdx < subCount; subIdx++)
                 {
+                    if (!IsValidRenderSubmesh(renderer, mesh, subIdx))
+                    {
+                        continue;
+                    }
+
                     uint meshId = UploadMeshToVulkan(mesh, subIdx);
                     ulong sortKey = ((ulong)meshId) << 16;
                     var subBounds = mesh.GetSubMesh(subIdx).bounds;
@@ -332,11 +405,14 @@ namespace Endfield.ECS.Systems
                 Quaternion relRot = Quaternion.Inverse(root.rotation) * t.rotation;
                 float relScale = root.lossyScale.x != 0 ? t.lossyScale.x / root.lossyScale.x : 1f;
 
-
-
                 int subCount = mesh.subMeshCount;
                 for (int subIdx = 0; subIdx < subCount; subIdx++)
                 {
+                    if (!IsValidRenderSubmesh(smr, mesh, subIdx))
+                    {
+                        continue;
+                    }
+
                     uint meshId = UploadMeshToVulkan(mesh, subIdx);
                     ulong sortKey = ((ulong)meshId) << 16;
                     var subBounds = mesh.GetSubMesh(subIdx).bounds;
@@ -518,9 +594,15 @@ namespace Endfield.ECS.Systems
 
 
 
+                Renderer renderer = mf.GetComponent<Renderer>();
                 int subCount = mf.sharedMesh.subMeshCount;
                 for (int subIdx = 0; subIdx < subCount; subIdx++)
                 {
+                    if (!CharacterSpawner.IsValidRenderSubmesh(renderer, mf.sharedMesh, subIdx))
+                    {
+                        continue;
+                    }
+
                     var subBounds = mf.sharedMesh.GetSubMesh(subIdx).bounds;
                     buffer.Add(new SubmeshBakeData
                     {
@@ -545,10 +627,14 @@ namespace Endfield.ECS.Systems
                 Quaternion relRot = Quaternion.Inverse(root.rotation) * t.rotation;
                 float relScale = root.lossyScale.x != 0 ? t.lossyScale.x / root.lossyScale.x : 1f;
 
-
                 int subCount = smr.sharedMesh.subMeshCount;
                 for (int subIdx = 0; subIdx < subCount; subIdx++)
                 {
+                    if (!CharacterSpawner.IsValidRenderSubmesh(smr, smr.sharedMesh, subIdx))
+                    {
+                        continue;
+                    }
+
                     var subBounds = smr.sharedMesh.GetSubMesh(subIdx).bounds;
                     buffer.Add(new SubmeshBakeData
                     {
